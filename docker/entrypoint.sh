@@ -126,14 +126,14 @@ schema_is_ready() {
     try {
       require "vendor/autoload.php";
       $app = require "bootstrap/app.php";
-      $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+      $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
       $kernel->bootstrap();
       foreach (["users","admins","orders","services","categories","settings","languages","language_values"] as $table) {
-        if (!Illuminate\\Support\\Facades\\Schema::hasTable($table)) { exit(1); }
+        if (!Illuminate\Support\Facades\Schema::hasTable($table)) { exit(1); }
       }
       exit(0);
     } catch (Throwable $e) {
-      fwrite(STDERR, "Schema readiness check failed: ".get_class($e)."\n");
+      fwrite(STDERR, "Schema readiness check failed: ".get_class($e).": ".$e->getMessage()."\n");
       exit(1);
     }
   '
