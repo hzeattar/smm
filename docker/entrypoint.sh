@@ -83,6 +83,7 @@ EOF
 
 start_setup_mode() {
   local reason="$1"
+  shift
   write_health "$reason"
   echo "Starting safe setup mode: ${reason}"
   rm -f public/index.html
