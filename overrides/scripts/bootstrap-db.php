@@ -63,6 +63,28 @@ foreach ($required as $table) {
 
 $now = date('Y-m-d H:i:s');
 
+// Launch policy: keep registration/login enabled, but skip email verification for now.
+if (Schema::hasTable('settings')) {
+    $launchSettings = [
+        'user_registration' => 'on',
+        'user_login' => 'on',
+        'email_verification' => 'off',
+        'email_verification_tpl_active' => 'off',
+    ];
+
+    foreach ($launchSettings as $name => $value) {
+        DB::table('settings')->updateOrInsert(
+            ['name' => $name],
+            ['value' => $value, 'updated_at' => $now, 'created_at' => $now]
+        );
+    }
+}
+
+// Existing accounts are treated as verified while verification is disabled.
+if (Schema::hasTable('users')) {
+    DB::table('users')->whereNull('email_verified_at')->update(['email_verified_at' => $now, 'updated_at' => $now]);
+}
+
 // Known owner accounts. Passwords are stored only as bcrypt hashes in source.
 if (Schema::hasTable('admins')) {
     DB::table('admins')->updateOrInsert(
@@ -113,5 +135,5 @@ if (Schema::hasTable('users')) {
     );
 }
 
-fwrite(STDOUT, "Database bootstrap complete. SeedApplied={$applied}; SeedFailed={$failed}; OwnerAccounts=ready\n");
+fwrite(STDOUT, "Database bootstrap complete. SeedApplied={$applied}; SeedFailed={$failed}; OwnerAccounts=ready; EmailVerification=off\n");
 exit(0);
