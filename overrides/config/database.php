@@ -8,7 +8,7 @@ return [
     'connections' => [
         'sqlite' => [
             'driver' => 'sqlite',
-            'url' => env('DATABASE_URL'),
+            'url' => null,
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
@@ -16,8 +16,11 @@ return [
 
         'mysql' => [
             'driver' => 'mysql',
-            'url' => env('DATABASE_URL', env('MYSQL_URL')),
-            'host' => env('DB_HOST', env('MYSQLHOST', '127.0.0.1')),
+            // Railway values are normalized into DB_* at container startup and
+            // persisted to .env. Do not let DATABASE_URL/MYSQL_URL silently
+            // override them or fall back to Laravel's old "forge" defaults.
+            'url' => null,
+            'host' => env('DB_HOST', env('MYSQLHOST')),
             'port' => env('DB_PORT', env('MYSQLPORT', '3306')),
             'database' => env('DB_DATABASE', env('MYSQLDATABASE')),
             'username' => env('DB_USERNAME', env('MYSQLUSER')),
@@ -36,7 +39,7 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DATABASE_URL'),
+            'url' => null,
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE'),
@@ -51,7 +54,7 @@ return [
 
         'sqlsrv' => [
             'driver' => 'sqlsrv',
-            'url' => env('DATABASE_URL'),
+            'url' => null,
             'host' => env('DB_HOST', 'localhost'),
             'port' => env('DB_PORT', '1433'),
             'database' => env('DB_DATABASE'),
