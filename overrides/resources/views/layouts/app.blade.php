@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="{{ asset('css/app-rtl.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-theme.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-landing.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/yellow-duck-polish.css') }}">
 
     <style>@include('layouts.style-config')</style>
     {!! Helper::settings('scripts_integrations') !!}
