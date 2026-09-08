@@ -1,0 +1,48 @@
+#!/usr/bin/env php
+<?php
+
+$root = __DIR__;
+$real = $root . '/artisan.real';
+
+if (!is_file($real)) {
+    fwrite(STDERR, "Original artisan entrypoint is missing.\n");
+    exit(70);
+}
+
+$args = array_slice($argv, 1);
+
+$run = static function (array $commandArgs) use ($real): int {
+    $parts = [escapeshellarg(PHP_BINARY), escapeshellarg($real)];
+    foreach ($commandArgs as $arg) {
+        $parts[] = escapeshellarg((string) $arg);
+    }
+    passthru(implode(' ', $parts), $code);
+    return (int) $code;
+};
+
+if (($args[0] ?? null) !== 'migrate') {
+    exit($run($args));
+}
+
+$code = $run($args);
+if ($code === 0) {
+    exit(0);
+}
+
+fwrite(STDERR, "Laravel migration failed; attempting schema-only recovery from the pinned upstream dump.\n");
+$schemaScript = $root . '/scripts/bootstrap-schema.php';
+if (!is_file($schemaScript)) {
+    fwrite(STDERR, "Schema recovery script is missing.\n");
+    exit($code ?: 71);
+}
+
+$cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($schemaScript);
+passthru($cmd, $fallbackCode);
+
+if ($fallbackCode === 0) {
+    fwrite(STDOUT, "Schema-only recovery completed successfully.\n");
+    exit(0);
+}
+
+fwrite(STDERR, "Schema-only recovery failed.\n");
+exit($code ?: $fallbackCode ?: 72);
