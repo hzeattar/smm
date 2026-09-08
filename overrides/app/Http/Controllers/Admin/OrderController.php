@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\User;
@@ -14,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Throwable;
 
 class OrderController extends Controller
 {
@@ -22,52 +22,92 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $isAdmin = Auth::guard('admin')->check();
-        $query = Order::with(['user','service','service.apiProvider','service.category'])->orderByDesc('id');
-
-        if (!$isAdmin) {
-            $query->where('user_id', Auth::id());
-        }
-
-        $search = trim((string) $request->input('search', ''));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search, $isAdmin) {
-                $q->where('id', 'like', '%' . $search . '%')
-                    ->orWhere('link', 'like', '%' . $search . '%')
-                    ->orWhereHas('service', function ($serviceQuery) use ($search) {
-                        $serviceQuery->where('name', 'like', '%' . $search . '%');
-                    });
-
-                if ($isAdmin) {
-                    $q->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->where('username', 'like', '%' . $search . '%')
-                            ->orWhere('email', 'like', '%' . $search . '%');
-                    });
-                }
-            });
-        }
-
-        $orders = $query->paginate(15);
-        $permissions = $this->getPermissions('orders');
+        $userId = $isAdmin ? null : (int) Auth::id();
 
         if ($request->boolean('api')) {
-            return response()->json(compact('permissions','orders'), 200);
+            try {
+                $query = Order::with(['user','service','service.apiProvider','service.category'])->orderByDesc('id');
+
+                if (!$isAdmin) {
+                    $query->where('user_id', $userId);
+                }
+
+                $search = trim((string) $request->input('search', ''));
+                if ($search !== '') {
+                    $query->where(function ($q) use ($search, $isAdmin) {
+                        $q->where('id', 'like', '%' . $search . '%')
+                            ->orWhere('link', 'like', '%' . $search . '%')
+                            ->orWhereHas('service', function ($serviceQuery) use ($search) {
+                                $serviceQuery->where('name', 'like', '%' . $search . '%');
+                            });
+
+                        if ($isAdmin) {
+                            $q->orWhereHas('user', function ($userQuery) use ($search) {
+                                $userQuery->where('username', 'like', '%' . $search . '%')
+                                    ->orWhere('email', 'like', '%' . $search . '%');
+                            });
+                        }
+                    });
+                }
+
+                $orders = $query->paginate(15);
+                $permissions = $this->getPermissions('orders');
+
+                return response()->json(compact('permissions', 'orders'), 200);
+            } catch (Throwable $e) {
+                report($e);
+                return response()->json([
+                    'permissions' => [],
+                    'orders' => [
+                        'data' => [],
+                        'current_page' => 1,
+                        'last_page' => 1,
+                    ],
+                    'message' => 'تعذر تحميل سجل الطلبات مؤقتًا.',
+                ], 200);
+            }
         }
 
-        $statsQuery = Order::query();
-        if (!$isAdmin) {
-            $statsQuery->where('user_id', Auth::id());
+        // Keep the initial page render deliberately lightweight. Orders are loaded
+        // asynchronously after the UI mounts, so one malformed historical row cannot
+        // take the whole order workspace down.
+        try {
+            $statsQuery = DB::table('orders');
+            if (!$isAdmin) {
+                $statsQuery->where('user_id', $userId);
+            }
+
+            $balance = 0.0;
+            if (!$isAdmin && $userId > 0) {
+                $balance = (float) DB::table('users')->where('id', $userId)->value('funds');
+            }
+
+            $orderStats = [
+                'balance' => $balance,
+                'spent' => (float) (clone $statsQuery)->sum('total'),
+                'total_orders' => (int) (clone $statsQuery)->count(),
+                'completed_orders' => (int) (clone $statsQuery)->where('status', 'completed')->count(),
+                'open_orders' => (int) (clone $statsQuery)->whereIn('status', ['pending','processing','in progress','awaiting'])->count(),
+            ];
+
+            $categories = DB::table('categories')
+                ->where('status', 'active')
+                ->select(['id', 'name'])
+                ->orderBy('name')
+                ->get();
+        } catch (Throwable $e) {
+            report($e);
+            $orderStats = [
+                'balance' => 0.0,
+                'spent' => 0.0,
+                'total_orders' => 0,
+                'completed_orders' => 0,
+                'open_orders' => 0,
+            ];
+            $categories = collect();
         }
 
-        $orderStats = [
-            'balance' => $isAdmin ? 0 : (float) optional(Auth::user())->funds,
-            'spent' => (float) (clone $statsQuery)->sum('total'),
-            'total_orders' => (int) (clone $statsQuery)->count(),
-            'completed_orders' => (int) (clone $statsQuery)->where('status', 'completed')->count(),
-            'open_orders' => (int) (clone $statsQuery)->whereIn('status', ['pending','processing','in progress','awaiting'])->count(),
-        ];
-
-        $categories = Category::where('status','active')->orderBy('name')->get();
-        return view('admin.orders', compact('orders','categories','orderStats'));
+        return view('admin.orders', compact('categories', 'orderStats'));
     }
 
     public function store(Request $request)
@@ -238,8 +278,8 @@ class OrderController extends Controller
 
     public function getServices($category_id)
     {
-        $services = Service::where('category_id',$category_id)
-            ->where('status','active')
+        $services = Service::where('category_id', $category_id)
+            ->where('status', 'active')
             ->orderBy('name')
             ->get();
         return response()->json($services, 200);
