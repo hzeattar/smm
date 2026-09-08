@@ -1,4 +1,4 @@
-FROM php:8.1-apache-bookworm
+FROM ubuntu:22.04
 
 ARG SMMBOOSTER_COMMIT=0315d0631bb7ac354cae817514eced0b9dc1bcc7
 
@@ -10,12 +10,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        apache2 libapache2-mod-php8.1 \
+        php8.1-cli php8.1-common php8.1-mysql php8.1-curl php8.1-mbstring \
+        php8.1-xml php8.1-zip php8.1-gd php8.1-bcmath php8.1-opcache \
         git unzip ca-certificates curl \
-        libcurl4-openssl-dev libonig-dev libxml2-dev libzip-dev \
-        libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql mysqli bcmath mbstring zip gd opcache curl dom xml xmlreader xmlwriter \
     && a2enmod rewrite headers expires \
     && sed -ri 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \
     && rm -rf /var/lib/apt/lists/*
@@ -25,7 +23,7 @@ COPY --from=composer:2.2 /usr/bin/composer /usr/local/bin/composer
 WORKDIR /var/www/html
 
 # Pin the exact upstream revision so future upstream changes cannot silently
-# change a Railway build.
+# alter a Railway build.
 RUN git clone --no-tags https://github.com/mediarayek-me/smmbooster.git /tmp/smmbooster \
     && cd /tmp/smmbooster \
     && git checkout "${SMMBOOSTER_COMMIT}" \
@@ -35,7 +33,8 @@ RUN git clone --no-tags https://github.com/mediarayek-me/smmbooster.git /tmp/smm
 
 COPY overrides/ /var/www/html/
 COPY docker/000-default.conf /etc/apache2/sites-available/000-default.conf
-COPY docker/php.ini /usr/local/etc/php/conf.d/99-railway.ini
+COPY docker/php.ini /etc/php/8.1/apache2/conf.d/99-railway.ini
+COPY docker/php.ini /etc/php/8.1/cli/conf.d/99-railway.ini
 COPY docker/entrypoint.sh /usr/local/bin/railway-entrypoint
 
 # Keep the upstream lockfile intact. Laravel 8.32 predates PHP 8.1 and forces
@@ -51,4 +50,4 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
 
 EXPOSE 8080
 ENTRYPOINT ["railway-entrypoint"]
-CMD ["apache2-foreground"]
+CMD ["apache2ctl", "-D", "FOREGROUND"]
