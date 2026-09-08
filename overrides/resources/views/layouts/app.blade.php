@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ Helper::getDefaultDirection() == 'rtl' ? 'ar' : 'en' }}" dir="{{ Helper::getDefaultDirection() }}">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -16,7 +16,7 @@
     <meta property="og:description" content="{{ Helper::settings('website_desc') }}">
     <meta property="og:type" content="website">
 
-    <link rel="stylesheet" href="{{ asset(Helper::getDefaultDirection() == 'rtl' ? 'css/app-rtl.css' : 'css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/app-rtl.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-theme.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-landing.css') }}">
 
