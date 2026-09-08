@@ -21,25 +21,53 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
-        $orders = Order::with(['user','service','service.apiProvider','service.category'])->orderBy('id','desc')->paginate();
+        $isAdmin = Auth::guard('admin')->check();
+        $query = Order::with(['user','service','service.apiProvider','service.category'])->orderByDesc('id');
+
+        if (!$isAdmin) {
+            $query->where('user_id', Auth::id());
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search, $isAdmin) {
+                $q->where('id', 'like', '%' . $search . '%')
+                    ->orWhere('link', 'like', '%' . $search . '%')
+                    ->orWhereHas('service', function ($serviceQuery) use ($search) {
+                        $serviceQuery->where('name', 'like', '%' . $search . '%');
+                    });
+
+                if ($isAdmin) {
+                    $q->orWhereHas('user', function ($userQuery) use ($search) {
+                        $userQuery->where('username', 'like', '%' . $search . '%')
+                            ->orWhere('email', 'like', '%' . $search . '%');
+                    });
+                }
+            });
+        }
+
+        $orders = $query->paginate(15);
         $permissions = $this->getPermissions('orders');
 
-        if ($request->api) {
-            if (isset($request->search)) {
-                $orders = $this->filter([
-                    'table' => 'orders',
-                    'class' => Order::class,
-                    'tables' => ['users','services','api_providers','categories'],
-                    'with' => ['user','service','service.apiProvider','service.category'],
-                    'search' => $request->search,
-                ]);
-            }
+        if ($request->boolean('api')) {
             return response()->json(compact('permissions','orders'), 200);
         }
 
-        $categories = Category::where('status','active')->orderBy('id','desc')->get();
-        $services = Service::where('status','active')->orderBy('id','desc')->get();
-        return view('admin.orders', compact('orders','categories','services'));
+        $statsQuery = Order::query();
+        if (!$isAdmin) {
+            $statsQuery->where('user_id', Auth::id());
+        }
+
+        $orderStats = [
+            'balance' => $isAdmin ? 0 : (float) optional(Auth::user())->funds,
+            'spent' => (float) (clone $statsQuery)->sum('total'),
+            'total_orders' => (int) (clone $statsQuery)->count(),
+            'completed_orders' => (int) (clone $statsQuery)->where('status', 'completed')->count(),
+            'open_orders' => (int) (clone $statsQuery)->whereIn('status', ['pending','processing','in progress','awaiting'])->count(),
+        ];
+
+        $categories = Category::where('status','active')->orderBy('name')->get();
+        return view('admin.orders', compact('orders','categories','orderStats'));
     }
 
     public function store(Request $request)
@@ -171,21 +199,29 @@ class OrderController extends Controller
 
     public function discountBalance($order)
     {
-        // Kept for backwards compatibility. New order creation performs an atomic debit in store().
         return true;
     }
 
     public function show($id)
     {
-        $order = Order::with(['service','service.category','user'])->where('id',$id)->firstOrFail()->toArray();
+        $query = Order::with(['service','service.category','user'])->where('id', $id);
+        if (!Auth::guard('admin')->check()) {
+            $query->where('user_id', Auth::id());
+        }
+        $order = $query->firstOrFail()->toArray();
         $order['category_id'] = $order['service']['category_id'];
         return response()->json($order, 200);
     }
 
     public function update(Request $request, $id)
     {
-        $order = Order::where('id',$id)->firstOrFail();
-        $allowed = $request->only(['status','notes']);
+        $query = Order::where('id', $id);
+        $isAdmin = Auth::guard('admin')->check();
+        if (!$isAdmin) {
+            $query->where('user_id', Auth::id());
+        }
+        $order = $query->firstOrFail();
+        $allowed = $isAdmin ? $request->only(['status','notes']) : $request->only(['notes']);
         $order->update($allowed);
         return response()->json($order, 200);
     }
@@ -202,7 +238,10 @@ class OrderController extends Controller
 
     public function getServices($category_id)
     {
-        $services = Service::where('category_id',$category_id)->where('status','active')->get();
+        $services = Service::where('category_id',$category_id)
+            ->where('status','active')
+            ->orderBy('name')
+            ->get();
         return response()->json($services, 200);
     }
 }
