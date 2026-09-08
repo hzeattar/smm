@@ -22,11 +22,16 @@ if [ -z "${APP_KEY:-}" ]; then
   else
     export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
     printf '%s' "$APP_KEY" > "$RUNTIME_KEY_FILE"
+    echo "WARNING: APP_KEY is not configured as a persistent Railway variable."
   fi
 fi
 
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
 chown -R www-data:www-data storage bootstrap/cache
+
+touch storage/logs/laravel.log
+# Mirror file-based Laravel errors to Railway deploy logs when packages ignore LOG_CHANNEL.
+tail -n 0 -F storage/logs/laravel.log >&2 &
 
 php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
 php artisan --version
@@ -116,6 +121,24 @@ test_individual_connection() {
   '
 }
 
+schema_is_ready() {
+  php -r '
+    try {
+      require "vendor/autoload.php";
+      $app = require "bootstrap/app.php";
+      $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+      $kernel->bootstrap();
+      foreach (["users","admins","orders","services","categories","settings","languages","language_values"] as $table) {
+        if (!Illuminate\\Support\\Facades\\Schema::hasTable($table)) { exit(1); }
+      }
+      exit(0);
+    } catch (Throwable $e) {
+      fwrite(STDERR, "Schema readiness check failed: ".get_class($e)."\n");
+      exit(1);
+    }
+  '
+}
+
 write_health "checking"
 
 if [ -z "$ORIGINAL_DATABASE_URL" ] && [ -z "${MYSQL_URL:-}" ] && [ -z "${MYSQL_PUBLIC_URL:-}" ] && [ -z "$RAW_DB_HOST" ]; then
@@ -160,9 +183,18 @@ if [ "$DB_READY" -ne 1 ]; then
 fi
 
 write_health "connected"
-echo "MySQL connected via ${DB_SOURCE}. Running migrations..."
-if ! php artisan migrate --force; then
-  start_setup_mode "migration_failed" "$@"
+
+echo "Checking database schema..."
+if schema_is_ready; then
+  echo "Existing SMM schema detected; skipping Laravel migrations."
+else
+  echo "Schema is incomplete. Attempting Laravel migrations once..."
+  if ! php artisan migrate --force --no-interaction; then
+    echo "Laravel migration failed; attempting schema-only recovery from the pinned upstream dump."
+    if ! php scripts/bootstrap-schema.php; then
+      start_setup_mode "schema_failed" "$@"
+    fi
+  fi
 fi
 
 write_health "seeding"
