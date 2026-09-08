@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-theme.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-admin.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-polish.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/yellow-duck-orders.css') }}">
     <style>@include('layouts.style-config')</style>
     @yield('header-scripts')
 </head>
