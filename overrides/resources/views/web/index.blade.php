@@ -7,7 +7,7 @@
     <section class="yd-hero" id="welcome">
         <div class="container">
             <div class="yd-hero-grid">
-                <div>
+                <div class="yd-hero-copy">
                     <span class="yd-kicker">🐥 منصة عربية لخدمات السوشيال ميديا</span>
                     <h1>كل خدمات السوشيال ميديا في مكان واحد مع <span>البطة الصفرا</span></h1>
                     <p>اطلب المتابعين والمشاهدات والتفاعلات والخدمات الرقمية بسهولة، تابع طلباتك من لوحة واحدة، واربط مزودي الخدمات والدفع بطريقة منظمة وقابلة للتوسع.</p>
@@ -20,23 +20,38 @@
                         @endif
                     </div>
                     <div class="yd-trust-row">
-                        <span class="yd-trust-pill">طلب سريع</span>
-                        <span class="yd-trust-pill">متابعة حالة الطلب</span>
-                        <span class="yd-trust-pill">مزودون متعددون</span>
-                        <span class="yd-trust-pill">دفع مرن</span>
+                        <span class="yd-trust-pill">⚡ طلب سريع</span>
+                        <span class="yd-trust-pill">📦 متابعة حالة الطلب</span>
+                        <span class="yd-trust-pill">🔌 مزودون متعددون</span>
+                        <span class="yd-trust-pill">💳 دفع مرن</span>
                     </div>
                 </div>
 
                 <aside class="yd-hero-card" aria-label="مميزات المنصة">
+                    <div class="yd-hero-card-glow"></div>
                     <img src="{{ asset('brand/yellow-duck.svg') }}" alt="البطة الصفرا">
+                    <span class="yd-live-badge"><i></i> جاهزة للتشغيل</span>
                     <h3>لوحة واحدة لكل احتياجاتك</h3>
                     <p>اختر الخدمة، أضف الرابط والكمية، وتابع الطلب من لحظة الإنشاء وحتى الإكمال.</p>
                     <div class="yd-stat-grid">
                         <div class="yd-stat"><strong>24/7</strong><span>المنصة متاحة</span></div>
                         <div class="yd-stat"><strong>API</strong><span>مزودون متعددون</span></div>
-                        <div class="yd-stat"><strong>سريع</strong><span>إنشاء الطلبات</span></div>
+                        <div class="yd-stat"><strong>3</strong><span>خطوات للطلب</span></div>
                     </div>
                 </aside>
+            </div>
+        </div>
+    </section>
+
+    <section class="yd-platform-strip" aria-label="المنصات المدعومة">
+        <div class="container">
+            <div class="yd-platforms">
+                <span>📸 Instagram</span>
+                <span>🎵 TikTok</span>
+                <span>▶️ YouTube</span>
+                <span>📘 Facebook</span>
+                <span>✈️ Telegram</span>
+                <span>⚡ والمزيد</span>
             </div>
         </div>
     </section>
@@ -49,12 +64,12 @@
                 <p>المنصة جاهزة لعرض خدمات مزودي الـSMM الذين سنربطهم، ويمكن إدارة الأسعار والهامش والخدمات من لوحة الإدارة.</p>
             </div>
             <div class="yd-service-grid">
-                <article class="yd-service-card"><div class="yd-service-icon">📸</div><h3>Instagram</h3><p>متابعون، إعجابات، مشاهدات، تفاعل وخدمات إضافية حسب المزود.</p></article>
-                <article class="yd-service-card"><div class="yd-service-icon">🎵</div><h3>TikTok</h3><p>مشاهدات، متابعون، إعجابات وتفاعل على المقاطع والحسابات.</p></article>
-                <article class="yd-service-card"><div class="yd-service-icon">▶️</div><h3>YouTube</h3><p>مشاهدات، إعجابات، مشتركين وخدمات نمو للقنوات والمحتوى.</p></article>
-                <article class="yd-service-card"><div class="yd-service-icon">📘</div><h3>Facebook</h3><p>تفاعل الصفحات والمنشورات والمتابعين والمشاهدات.</p></article>
-                <article class="yd-service-card"><div class="yd-service-icon">✈️</div><h3>Telegram</h3><p>أعضاء، مشاهدات وتفاعل للقنوات والمجموعات وفق الخدمات المتاحة.</p></article>
-                <article class="yd-service-card"><div class="yd-service-icon">⚡</div><h3>خدمات إضافية</h3><p>المنصة قابلة لإضافة أي منصة أو نوع خدمة يدعمه مزود الـAPI.</p></article>
+                <article class="yd-service-card"><div class="yd-service-icon">📸</div><h3>Instagram</h3><p>متابعون، إعجابات، مشاهدات، تفاعل وخدمات إضافية حسب المزود.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon">🎵</div><h3>TikTok</h3><p>مشاهدات، متابعون، إعجابات وتفاعل على المقاطع والحسابات.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon">▶️</div><h3>YouTube</h3><p>مشاهدات، إعجابات، مشتركين وخدمات نمو للقنوات والمحتوى.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon">📘</div><h3>Facebook</h3><p>تفاعل الصفحات والمنشورات والمتابعين والمشاهدات.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon">✈️</div><h3>Telegram</h3><p>أعضاء، مشاهدات وتفاعل للقنوات والمجموعات وفق الخدمات المتاحة.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon">⚡</div><h3>خدمات إضافية</h3><p>المنصة قابلة لإضافة أي منصة أو نوع خدمة يدعمه مزود الـAPI.</p><span class="yd-card-arrow">←</span></article>
             </div>
         </div>
     </section>
@@ -71,7 +86,7 @@
                 <article class="yd-feature-card"><div class="yd-feature-icon">🔌</div><h3>ربط مزودي API</h3><p>دعم مزودين متعددين ومزامنة الخدمات والأسعار حسب البنية الحالية للسكريبت.</p></article>
                 <article class="yd-feature-card"><div class="yd-feature-icon">💳</div><h3>دفع مرن</h3><p>البنية قابلة لبوابات الدفع التلقائي وكذلك طرق الدفع اليدوية والمراجعة من الإدارة.</p></article>
                 <article class="yd-feature-card"><div class="yd-feature-icon">📱</div><h3>متوافق مع الموبايل</h3><p>تصميم Responsive للواجهة العامة وصفحات الحساب وتسجيل الدخول.</p></article>
-                <article class="yd-feature-card"><div class="yd-feature-icon">🔐</div><h3>حسابات منفصلة</h3><p>تسجيل دخول مستقل للمستخدمين ولوحة إدارة مستقلة للأدمن.</p></article>
+                <article class="yd-feature-card"><div class="yd-feature-icon">🔐</div><h3>دخول مباشر</h3><p>التسجيل والدخول بسيطان بدون خطوة تأكيد بريد إضافية في مرحلة الإطلاق.</p></article>
                 <article class="yd-feature-card"><div class="yd-feature-icon">📊</div><h3>إدارة مركزية</h3><p>إدارة المستخدمين والخدمات والطلبات والمزودين والمدفوعات من مكان واحد.</p></article>
             </div>
         </div>
@@ -84,7 +99,7 @@
                 <h2>3 خطوات فقط</h2>
             </div>
             <div class="yd-process">
-                <article class="yd-step"><b>1</b><h3>أنشئ حسابك</h3><p>سجل بياناتك وادخل إلى لوحة المستخدم الخاصة بك.</p></article>
+                <article class="yd-step"><b>1</b><h3>أنشئ حسابك</h3><p>سجل بياناتك وادخل إلى لوحة المستخدم الخاصة بك مباشرة.</p></article>
                 <article class="yd-step"><b>2</b><h3>اختر الخدمة</h3><p>حدد الخدمة والكمية والرابط المطلوب تنفيذ الخدمة عليه.</p></article>
                 <article class="yd-step"><b>3</b><h3>تابع الطلب</h3><p>شاهد حالة الطلب وتفاصيله مباشرة من لوحة حسابك.</p></article>
             </div>
@@ -106,6 +121,26 @@
                 @empty
                     <article class="yd-faq-item"><h3>كيف أبدأ؟</h3><div class="answer">أنشئ حسابًا، أضف رصيدك، ثم اختر الخدمة المناسبة وأنشئ الطلب.</div></article>
                 @endforelse
+            </div>
+        </div>
+    </section>
+
+    <section class="yd-section yd-cta-section">
+        <div class="container">
+            <div class="yd-launch-cta">
+                <div>
+                    <span class="yd-kicker">ابدأ في أقل من دقيقة</span>
+                    <h2>جاهز تجرب البطة الصفرا؟</h2>
+                    <p>أنشئ حسابك، ادخل للوحة المستخدم، وأول ما نربط المزود هتظهر الخدمات والأسعار تلقائيًا.</p>
+                </div>
+                <div class="yd-launch-actions">
+                    @if (Helper::settings('user_registration') === 'on')
+                        <a class="yd-primary-cta" href="{{ route('register') }}">إنشاء حساب</a>
+                    @endif
+                    @if (Helper::settings('user_login') === 'on')
+                        <a class="yd-secondary-cta yd-secondary-dark" href="{{ route('login') }}">تسجيل الدخول</a>
+                    @endif
+                </div>
             </div>
         </div>
     </section>
