@@ -2,7 +2,6 @@
 set -euo pipefail
 
 PORT="${PORT:-8080}"
-
 sed -ri "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s/<VirtualHost \*:[0-9]+>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
@@ -16,7 +15,6 @@ if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
   export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
 fi
 
-# Keep the app bootable before a permanent APP_KEY is configured in Railway.
 if [ -z "${APP_KEY:-}" ]; then
   RUNTIME_KEY_FILE="storage/.runtime_app_key"
   if [ -f "$RUNTIME_KEY_FILE" ]; then
@@ -30,8 +28,7 @@ fi
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
 chown -R www-data:www-data storage bootstrap/cache
 
-# Runtime framework preflight. These failures must remain fatal because they mean
-# the image/framework itself is broken, not merely an unavailable database.
+# Framework preflight: fail only when Laravel itself cannot bootstrap.
 php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
 php artisan --version
 php artisan package:discover --ansi
@@ -39,40 +36,27 @@ php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
 
-# Detect every common Railway MySQL reference style. Laravel natively understands
-# DATABASE_URL, so prefer a single URL reference when Railway provides one.
-HAS_DATABASE_URL=false; [ -n "${DATABASE_URL:-}" ] && HAS_DATABASE_URL=true
+ORIGINAL_DATABASE_URL="${DATABASE_URL:-}"
+RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
+
+HAS_DATABASE_URL=false; [ -n "$ORIGINAL_DATABASE_URL" ] && HAS_DATABASE_URL=true
 HAS_MYSQL_URL=false; [ -n "${MYSQL_URL:-}" ] && HAS_MYSQL_URL=true
 HAS_MYSQL_PUBLIC_URL=false; [ -n "${MYSQL_PUBLIC_URL:-}" ] && HAS_MYSQL_PUBLIC_URL=true
-HAS_HOST=false; [ -n "${DB_HOST:-${MYSQLHOST:-}}" ] && HAS_HOST=true
+HAS_HOST=false; [ -n "$RAW_DB_HOST" ] && HAS_HOST=true
 HAS_USER=false; [ -n "${DB_USERNAME:-${MYSQLUSER:-}}" ] && HAS_USER=true
 HAS_PASSWORD=false; [ -n "${DB_PASSWORD:-${MYSQLPASSWORD:-}}" ] && HAS_PASSWORD=true
 HAS_DATABASE=false; [ -n "${DB_DATABASE:-${MYSQLDATABASE:-}}" ] && HAS_DATABASE=true
 
-DB_SOURCE="none"
-DB_CONFIGURED=0
-RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
-
-if [ -n "${DATABASE_URL:-}" ]; then
-  DB_SOURCE="DATABASE_URL"
-  DB_CONFIGURED=1
-elif [ -n "${MYSQL_URL:-}" ]; then
-  export DATABASE_URL="$MYSQL_URL"
-  DB_SOURCE="MYSQL_URL"
-  DB_CONFIGURED=1
-elif [ -n "${MYSQL_PUBLIC_URL:-}" ]; then
-  export DATABASE_URL="$MYSQL_PUBLIC_URL"
-  DB_SOURCE="MYSQL_PUBLIC_URL"
-  DB_CONFIGURED=1
-elif [ -n "$RAW_DB_HOST" ]; then
+if [ -n "$RAW_DB_HOST" ]; then
   export DB_HOST="$RAW_DB_HOST"
   export DB_PORT="${DB_PORT:-${MYSQLPORT:-3306}}"
   export DB_DATABASE="${DB_DATABASE:-${MYSQLDATABASE:-railway}}"
   export DB_USERNAME="${DB_USERNAME:-${MYSQLUSER:-root}}"
   export DB_PASSWORD="${DB_PASSWORD:-${MYSQLPASSWORD:-}}"
-  DB_SOURCE="individual_vars"
-  DB_CONFIGURED=1
 fi
+
+DB_SOURCE="none"
+DB_READY=0
 
 write_health() {
   local connection="$1"
@@ -94,33 +78,18 @@ start_setup_mode() {
   exec "$@"
 }
 
-write_health "checking"
-
-if [ "$DB_CONFIGURED" -ne 1 ]; then
-  start_setup_mode "not_configured" "$@"
-fi
-
-echo "Database reference detected via ${DB_SOURCE}. Waiting for MySQL..."
-DB_READY=0
-for i in $(seq 1 15); do
-  if php -r '
+test_url_connection() {
+  local candidate="$1"
+  DB_TEST_URL="$candidate" php -r '
     try {
-      $url = getenv("DATABASE_URL");
-      if ($url) {
-        $p = parse_url($url);
-        if (!$p || empty($p["host"])) { throw new RuntimeException("Invalid database URL"); }
-        $host = $p["host"];
-        $port = $p["port"] ?? 3306;
-        $db = ltrim($p["path"] ?? "", "/");
-        $user = urldecode($p["user"] ?? "");
-        $pass = urldecode($p["pass"] ?? "");
-      } else {
-        $host = getenv("DB_HOST");
-        $port = getenv("DB_PORT") ?: 3306;
-        $db = getenv("DB_DATABASE");
-        $user = getenv("DB_USERNAME");
-        $pass = getenv("DB_PASSWORD");
-      }
+      $url = getenv("DB_TEST_URL");
+      $p = parse_url($url);
+      if (!$p || empty($p["host"])) { exit(1); }
+      $host = $p["host"];
+      $port = $p["port"] ?? 3306;
+      $db = ltrim($p["path"] ?? "", "/");
+      $user = urldecode($p["user"] ?? "");
+      $pass = urldecode($p["pass"] ?? "");
       $pdo = new PDO(
         "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4",
         $user,
@@ -129,13 +98,61 @@ for i in $(seq 1 15); do
       );
       $pdo->query("SELECT 1");
       exit(0);
-    } catch (Throwable $e) {
-      exit(1);
-    }
-  '; then
+    } catch (Throwable $e) { exit(1); }
+  '
+}
+
+test_individual_connection() {
+  php -r '
+    try {
+      $pdo = new PDO(
+        "mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT") ?: 3306).";dbname=".getenv("DB_DATABASE").";charset=utf8mb4",
+        getenv("DB_USERNAME"),
+        getenv("DB_PASSWORD"),
+        [PDO::ATTR_TIMEOUT => 3, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+      );
+      $pdo->query("SELECT 1");
+      exit(0);
+    } catch (Throwable $e) { exit(1); }
+  '
+}
+
+write_health "checking"
+
+if [ -z "$ORIGINAL_DATABASE_URL" ] && [ -z "${MYSQL_URL:-}" ] && [ -z "${MYSQL_PUBLIC_URL:-}" ] && [ -z "$RAW_DB_HOST" ]; then
+  start_setup_mode "not_configured" "$@"
+fi
+
+echo "Testing Railway MySQL connection references..."
+for round in $(seq 1 10); do
+  if [ -n "$ORIGINAL_DATABASE_URL" ] && test_url_connection "$ORIGINAL_DATABASE_URL"; then
+    export DATABASE_URL="$ORIGINAL_DATABASE_URL"
+    DB_SOURCE="DATABASE_URL"
     DB_READY=1
     break
   fi
+
+  if [ -n "${MYSQL_URL:-}" ] && test_url_connection "$MYSQL_URL"; then
+    export DATABASE_URL="$MYSQL_URL"
+    DB_SOURCE="MYSQL_URL"
+    DB_READY=1
+    break
+  fi
+
+  if [ -n "$RAW_DB_HOST" ] && test_individual_connection; then
+    unset DATABASE_URL || true
+    DB_SOURCE="individual_vars"
+    DB_READY=1
+    break
+  fi
+
+  if [ -n "${MYSQL_PUBLIC_URL:-}" ] && test_url_connection "$MYSQL_PUBLIC_URL"; then
+    export DATABASE_URL="$MYSQL_PUBLIC_URL"
+    DB_SOURCE="MYSQL_PUBLIC_URL"
+    DB_READY=1
+    break
+  fi
+
   sleep 2
 done
 
@@ -144,12 +161,12 @@ if [ "$DB_READY" -ne 1 ]; then
 fi
 
 write_health "connected"
-echo "MySQL connected. Running migrations..."
+echo "MySQL connected via ${DB_SOURCE}. Running migrations..."
 if ! php artisan migrate --force; then
   start_setup_mode "migration_failed" "$@"
 fi
 
-# Seed upstream data only when the admins table is empty.
+# Seed initial data only when no admin exists yet.
 if ! php -r '
   require "vendor/autoload.php";
   $app = require "bootstrap/app.php";
@@ -165,7 +182,7 @@ else
   echo "Initial SMM data already present; seed skipped."
 fi
 
-# Apply Yellow Duck branding without changing provider, ordering or payment logic.
+# Apply branding only; provider/order/payment business logic stays untouched.
 php -r '
   require "vendor/autoload.php";
   $app = require "bootstrap/app.php";
