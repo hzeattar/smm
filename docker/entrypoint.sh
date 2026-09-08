@@ -42,6 +42,9 @@ fi
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache
 
+# Composer build uses --no-scripts for compatibility; complete Laravel discovery now
+# when Railway runtime variables are present and before the app is marked installed.
+php artisan package:discover --ansi || true
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
