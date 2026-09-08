@@ -1,4 +1,4 @@
-FROM php:8.2-apache-bookworm
+FROM php:8.1-apache-bookworm
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     COMPOSER_ALLOW_SUPERUSER=1 \
@@ -16,7 +16,7 @@ RUN apt-get update \
     && a2enmod rewrite headers expires \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+COPY --from=composer:2.2 /usr/bin/composer /usr/local/bin/composer
 
 WORKDIR /var/www/html
 
@@ -31,8 +31,10 @@ COPY docker/000-default.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/php.ini /usr/local/etc/php/conf.d/railway.ini
 COPY docker/entrypoint.sh /usr/local/bin/railway-entrypoint
 
+# Keep framework boot out of the image build. Package discovery is performed at runtime
+# after Railway environment variables are available.
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
-    && composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader \
+    && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader \
     && chmod +x /usr/local/bin/railway-entrypoint \
     && chown -R www-data:www-data storage bootstrap/cache
 
