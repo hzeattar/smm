@@ -9,194 +9,112 @@ export APP_ENV="${APP_ENV:-production}"
 export APP_DEBUG="${APP_DEBUG:-false}"
 export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
 export APP_NAME="${APP_NAME:-البطة الصفرا لخدمات السوشيال ميديا}"
-export DB_CONNECTION="${DB_CONNECTION:-mysql}"
-
-if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
-  export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
-fi
-
-if [ -z "${APP_KEY:-}" ]; then
-  RUNTIME_KEY_FILE="storage/.runtime_app_key"
-  if [ -f "$RUNTIME_KEY_FILE" ]; then
-    export APP_KEY="$(cat "$RUNTIME_KEY_FILE")"
-  else
-    export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
-    printf '%s' "$APP_KEY" > "$RUNTIME_KEY_FILE"
-  fi
-fi
+export APP_URL="${APP_URL:-${RAILWAY_PUBLIC_DOMAIN:+https://${RAILWAY_PUBLIC_DOMAIN}}}"
+export DB_CONNECTION="mysql"
 
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
-chown -R www-data:www-data storage bootstrap/cache
 
-php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
-php artisan --version
-php artisan package:discover --ansi
-php artisan config:clear || true
-php artisan route:clear || true
-php artisan view:clear || true
-
-ORIGINAL_DATABASE_URL="${DATABASE_URL:-}"
-RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
-
-HAS_DATABASE_URL=false; [ -n "$ORIGINAL_DATABASE_URL" ] && HAS_DATABASE_URL=true
-HAS_MYSQL_URL=false; [ -n "${MYSQL_URL:-}" ] && HAS_MYSQL_URL=true
-HAS_MYSQL_PUBLIC_URL=false; [ -n "${MYSQL_PUBLIC_URL:-}" ] && HAS_MYSQL_PUBLIC_URL=true
-HAS_HOST=false; [ -n "$RAW_DB_HOST" ] && HAS_HOST=true
-HAS_USER=false; [ -n "${DB_USERNAME:-${MYSQLUSER:-}}" ] && HAS_USER=true
-HAS_PASSWORD=false; [ -n "${DB_PASSWORD:-${MYSQLPASSWORD:-}}" ] && HAS_PASSWORD=true
-HAS_DATABASE=false; [ -n "${DB_DATABASE:-${MYSQLDATABASE:-}}" ] && HAS_DATABASE=true
-
-if [ -n "$RAW_DB_HOST" ]; then
-  export DB_HOST="$RAW_DB_HOST"
-  export DB_PORT="${DB_PORT:-${MYSQLPORT:-3306}}"
-  export DB_DATABASE="${DB_DATABASE:-${MYSQLDATABASE:-railway}}"
-  export DB_USERNAME="${DB_USERNAME:-${MYSQLUSER:-root}}"
-  export DB_PASSWORD="${DB_PASSWORD:-${MYSQLPASSWORD:-}}"
+if [ -z "${APP_KEY:-}" ]; then
+  KEY_FILE="storage/.runtime_app_key"
+  if [ -f "$KEY_FILE" ]; then
+    export APP_KEY="$(cat "$KEY_FILE")"
+  else
+    export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
+    printf '%s' "$APP_KEY" > "$KEY_FILE"
+  fi
 fi
 
-DB_SOURCE="none"
-DB_READY=0
+# Railway MySQL references are the single source of truth for production.
+export DB_HOST="${MYSQLHOST:-${DB_HOST:-}}"
+export DB_PORT="${MYSQLPORT:-${DB_PORT:-3306}}"
+export DB_DATABASE="${MYSQLDATABASE:-${DB_DATABASE:-}}"
+export DB_USERNAME="${MYSQLUSER:-${DB_USERNAME:-}}"
+export DB_PASSWORD="${MYSQLPASSWORD:-${DB_PASSWORD:-}}"
+unset DATABASE_URL || true
 
-write_health() {
-  local connection="$1"
-  cat > public/boot-health.json <<EOF
-{"service":"yellow-duck-smm","framework":"ok","database_source":"${DB_SOURCE}","database_url_ref":${HAS_DATABASE_URL},"mysql_url_ref":${HAS_MYSQL_URL},"mysql_public_url_ref":${HAS_MYSQL_PUBLIC_URL},"host_ref":${HAS_HOST},"user_ref":${HAS_USER},"password_ref":${HAS_PASSWORD},"database_ref":${HAS_DATABASE},"connection":"${connection}"}
-EOF
+if [ -z "${DB_HOST:-}" ] || [ -z "${DB_DATABASE:-}" ] || [ -z "${DB_USERNAME:-}" ]; then
+  echo "FATAL: Railway MySQL references are missing. Refusing Laravel placeholder defaults." >&2
+  exit 1
+fi
+
+# Persist the normalized runtime environment so Apache/PHP requests and Artisan
+# use exactly the same database settings. No secrets are printed to logs.
+php <<'PHP'
+<?php
+$names = [
+    'APP_NAME','APP_ENV','APP_KEY','APP_DEBUG','APP_URL','LOG_CHANNEL',
+    'DB_CONNECTION','DB_HOST','DB_PORT','DB_DATABASE','DB_USERNAME','DB_PASSWORD'
+];
+$escape = static function (string $value): string {
+    $value = str_replace(['\\', '"', '$', "\r", "\n"], ['\\\\', '\\"', '\\$', '', '\\n'], $value);
+    return '"'.$value.'"';
+};
+$lines = [];
+foreach ($names as $name) {
+    $value = getenv($name);
+    if ($value !== false) {
+        $lines[] = $name.'='.$escape((string) $value);
+    }
 }
+file_put_contents('.env', implode(PHP_EOL, $lines).PHP_EOL);
+PHP
+chmod 600 .env
+chown www-data:www-data .env
+chown -R www-data:www-data storage bootstrap/cache
 
-start_setup_mode() {
-  local reason="$1"
-  shift
-  write_health "$reason"
-  echo "Starting safe setup mode: ${reason}"
-  rm -f public/index.html
-  if [ -f public/index.php ]; then
-    mv public/index.php public/index.laravel.php
-  fi
-  cp public/setup.html public/index.html
-  exec "$@"
-}
-
-test_url_connection() {
-  local candidate="$1"
-  DB_TEST_URL="$candidate" php -r '
-    try {
-      $url = getenv("DB_TEST_URL");
-      $p = parse_url($url);
-      if (!$p || empty($p["host"])) { exit(1); }
-      $host = $p["host"];
-      $port = $p["port"] ?? 3306;
-      $db = ltrim($p["path"] ?? "", "/");
-      $user = urldecode($p["user"] ?? "");
-      $pass = urldecode($p["pass"] ?? "");
-      $pdo = new PDO(
-        "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4",
-        $user,
-        $pass,
-        [PDO::ATTR_TIMEOUT => 3, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-      );
-      $pdo->query("SELECT 1");
-      exit(0);
-    } catch (Throwable $e) { exit(1); }
-  '
-}
-
-test_individual_connection() {
-  php -r '
+# Wait for the existing Railway database. This startup path is deliberately
+# read-only: it never runs migrations, seeders, schema recovery, or provider sync.
+DB_OK=0
+for i in $(seq 1 30); do
+  if php -r '
     try {
       $pdo = new PDO(
         "mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT") ?: 3306).";dbname=".getenv("DB_DATABASE").";charset=utf8mb4",
-        getenv("DB_USERNAME"),
-        getenv("DB_PASSWORD"),
+        getenv("DB_USERNAME"), getenv("DB_PASSWORD"),
         [PDO::ATTR_TIMEOUT => 3, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
       );
       $pdo->query("SELECT 1");
       exit(0);
     } catch (Throwable $e) { exit(1); }
-  '
-}
-
-write_health "checking"
-
-if [ -z "$ORIGINAL_DATABASE_URL" ] && [ -z "${MYSQL_URL:-}" ] && [ -z "${MYSQL_PUBLIC_URL:-}" ] && [ -z "$RAW_DB_HOST" ]; then
-  start_setup_mode "not_configured" "$@"
-fi
-
-echo "Testing Railway MySQL connection references..."
-for round in $(seq 1 10); do
-  if [ -n "$ORIGINAL_DATABASE_URL" ] && test_url_connection "$ORIGINAL_DATABASE_URL"; then
-    export DATABASE_URL="$ORIGINAL_DATABASE_URL"
-    DB_SOURCE="DATABASE_URL"
-    DB_READY=1
+  '; then
+    DB_OK=1
     break
   fi
-
-  if [ -n "${MYSQL_URL:-}" ] && test_url_connection "$MYSQL_URL"; then
-    export DATABASE_URL="$MYSQL_URL"
-    DB_SOURCE="MYSQL_URL"
-    DB_READY=1
-    break
-  fi
-
-  if [ -n "$RAW_DB_HOST" ] && test_individual_connection; then
-    unset DATABASE_URL || true
-    DB_SOURCE="individual_vars"
-    DB_READY=1
-    break
-  fi
-
-  if [ -n "${MYSQL_PUBLIC_URL:-}" ] && test_url_connection "$MYSQL_PUBLIC_URL"; then
-    export DATABASE_URL="$MYSQL_PUBLIC_URL"
-    DB_SOURCE="MYSQL_PUBLIC_URL"
-    DB_READY=1
-    break
-  fi
-
   sleep 2
 done
 
-if [ "$DB_READY" -ne 1 ]; then
-  start_setup_mode "unreachable" "$@"
+if [ "$DB_OK" -ne 1 ]; then
+  echo "FATAL: Could not connect to Railway MySQL using normalized MYSQL* references." >&2
+  exit 1
 fi
 
-write_health "connected"
-echo "MySQL connected via ${DB_SOURCE}. Running migrations..."
-if ! php artisan migrate --force; then
-  start_setup_mode "migration_failed" "$@"
-fi
-
-write_health "seeding"
-echo "Checking and initializing required SMM data..."
-if ! php scripts/bootstrap-db.php; then
-  start_setup_mode "seed_failed" "$@"
-fi
-
+# Verify the existing application schema without changing it.
 php -r '
-  require "vendor/autoload.php";
-  $app = require "bootstrap/app.php";
-  $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-  $kernel->bootstrap();
-  $settings = [
-    "website_title" => "البطة الصفرا لخدمات السوشيال ميديا",
-    "website_name_1" => "البطة",
-    "website_name_2" => "الصفرا",
-    "website_desc" => "منصة عربية سهلة وسريعة لإدارة وطلب خدمات السوشيال ميديا من مكان واحد.",
-    "website_keywords" => "خدمات السوشيال ميديا, SMM, التسويق الرقمي, إدارة الخدمات",
-    "site_base_color" => "#F6C90E",
-    "site_secondary_color" => "#171717"
-  ];
-  foreach ($settings as $name => $value) {
-    Illuminate\Support\Facades\DB::table("settings")->where("name", $name)->update(["value" => $value]);
+  $pdo = new PDO(
+    "mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT") ?: 3306).";dbname=".getenv("DB_DATABASE").";charset=utf8mb4",
+    getenv("DB_USERNAME"), getenv("DB_PASSWORD"),
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+  );
+  $required = ["users","admins","orders","services","categories","settings"];
+  $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?");
+  foreach ($required as $table) {
+    $stmt->execute([getenv("DB_DATABASE"), $table]);
+    if ((int)$stmt->fetchColumn() !== 1) {
+      fwrite(STDERR, "FATAL: Required application table is missing: {$table}\n");
+      exit(1);
+    }
   }
-' || true
+'
 
 touch storage/installed
-chown www-data:www-data storage/installed
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
 php artisan --version
 
-write_health "ready"
-echo "Starting Apache on port ${PORT}..."
+cat > public/boot-health.json <<'EOF'
+{"service":"yellow-duck-smm","runtime":"restored","database":"connected","schema":"existing","mutations":"disabled"}
+EOF
+
+echo "Stable Yellow Duck runtime ready. Existing database preserved; migrations disabled."
 exec "$@"
