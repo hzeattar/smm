@@ -25,6 +25,7 @@ $health = [
     'margin_percent' => $margin,
     'services' => 0,
     'active_services' => 0,
+    'unsupported_services' => 0,
     'currency' => null,
     'balance' => null,
     'updated_at' => gmdate('c'),
@@ -80,6 +81,8 @@ try {
 
     $seen = [];
     $activeCount = 0;
+    $unsupportedCount = 0;
+    $simpleTypes = ['default', 'package'];
 
     foreach ($remoteServices as $remote) {
         if (!is_array($remote) || !isset($remote['service'], $remote['name'], $remote['category'], $remote['rate'], $remote['min'], $remote['max'])) {
@@ -109,9 +112,15 @@ try {
             ]);
         }
 
+        $providerType = strtolower(trim((string) ($remote['type'] ?? 'Default')));
+        $isSimpleType = in_array($providerType, $simpleTypes, true);
+        if (!$isSimpleType) {
+            $unsupportedCount++;
+        }
+
         $rateOriginal = round((float) $remote['rate'], 4);
         $rate = round($rateOriginal * (1 + ($margin / 100)), 4);
-        $serviceStatus = $publish ? 'active' : 'deactive';
+        $serviceStatus = ($publish && $isSimpleType) ? 'active' : 'deactive';
         if ($serviceStatus === 'active') {
             $activeCount++;
         }
@@ -120,6 +129,7 @@ try {
             'provider_type' => $remote['type'] ?? 'Default',
             'refill' => (bool) ($remote['refill'] ?? false),
             'cancel' => (bool) ($remote['cancel'] ?? false),
+            'simple_order_supported' => $isSimpleType,
         ];
 
         $serviceData = [
@@ -166,13 +176,15 @@ try {
 
     $health['services'] = $serviceCount;
     $health['active_services'] = $activeCount;
+    $health['unsupported_services'] = $unsupportedCount;
     $health['updated_at'] = gmdate('c');
     $writeHealth($health);
 
     fwrite(STDOUT, sprintf(
-        "SMMFansFaster sync OK. Services=%d Active=%d Margin=%.2f%% Balance=%s %s\n",
+        "SMMFansFaster sync OK. Services=%d Active=%d Unsupported=%d Margin=%.2f%% Balance=%s %s\n",
         $serviceCount,
         $activeCount,
+        $unsupportedCount,
         $margin,
         $health['balance'] === null ? 'unknown' : (string) $health['balance'],
         $health['currency'] ?: ''
