@@ -8,6 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="{{ asset('brand/yellow-duck.svg') }}">
     <link rel="stylesheet" href="{{ asset('css/app-rtl.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-auth.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/yellow-duck-polish.css') }}">
 </head>
 <body class="yd-auth-page">
     @yield('content')
