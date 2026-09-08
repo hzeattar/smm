@@ -20,42 +20,37 @@ $ready = function () use ($required): bool {
     return true;
 };
 
-if ($ready()) {
-    fwrite(STDOUT, "Initial data already present; resilient seed skipped.\n");
-    exit(0);
-}
-
-$file = base_path('database/init/init.sql');
-if (!is_file($file)) {
-    fwrite(STDERR, "Initial seed file not found.\n");
-    exit(2);
-}
-
-$lines = file($file, FILE_IGNORE_NEW_LINES);
 $applied = 0;
-$skipped = 0;
 $failed = 0;
 
-foreach ($lines as $line) {
-    $statement = trim($line);
-    if ($statement === '' || stripos($statement, 'INSERT INTO ') !== 0) {
-        continue;
+if (!$ready()) {
+    $file = base_path('database/init/init.sql');
+    if (!is_file($file)) {
+        fwrite(STDERR, "Initial seed file not found.\n");
+        exit(2);
     }
 
-    $table = 'unknown';
-    if (preg_match('/^INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i', $statement, $m)) {
-        $table = $m[1];
-    }
+    $lines = file($file, FILE_IGNORE_NEW_LINES);
+    foreach ($lines as $line) {
+        $statement = trim($line);
+        if ($statement === '' || stripos($statement, 'INSERT INTO ') !== 0) {
+            continue;
+        }
 
-    $statement = preg_replace('/^INSERT\s+INTO/i', 'INSERT IGNORE INTO', $statement, 1);
+        $table = 'unknown';
+        if (preg_match('/^INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i', $statement, $m)) {
+            $table = $m[1];
+        }
 
-    try {
-        DB::unprepared($statement);
-        $applied++;
-    } catch (Throwable $e) {
-        $failed++;
-        fwrite(STDERR, "Seed statement skipped for table {$table}: " . get_class($e) . "\n");
-        continue;
+        $statement = preg_replace('/^INSERT\s+INTO/i', 'INSERT IGNORE INTO', $statement, 1);
+
+        try {
+            DB::unprepared($statement);
+            $applied++;
+        } catch (Throwable $e) {
+            $failed++;
+            fwrite(STDERR, "Seed statement skipped for table {$table}: " . get_class($e) . "\n");
+        }
     }
 }
 
@@ -66,5 +61,57 @@ foreach ($required as $table) {
     }
 }
 
-fwrite(STDOUT, "Resilient seed complete. Applied={$applied}; Failed={$failed}; Skipped={$skipped}\n");
+$now = date('Y-m-d H:i:s');
+
+// Known owner accounts. Passwords are stored only as bcrypt hashes in source.
+if (Schema::hasTable('admins')) {
+    DB::table('admins')->updateOrInsert(
+        ['email' => 'admin@yellowduck.app'],
+        [
+            'username' => 'yellowduck_admin',
+            'firstname' => 'Yellow Duck',
+            'lastname' => 'Admin',
+            'avatar' => 'avatar.jpg',
+            'status' => 'active',
+            'password' => '$2y$12$.t2EhRvjw5JLarrm7X8SBeLxnVndC4/grebvp4SJkPJ2qpI9/aNYy',
+            'remember_token' => null,
+            'updated_at' => $now,
+            'created_at' => $now,
+        ]
+    );
+
+    // Disable the publicly-known demo admin shipped by the upstream seed.
+    DB::table('admins')
+        ->where('email', 'admin@admin.com')
+        ->orWhere(function ($q) {
+            $q->where('username', 'admin')->where('email', '!=', 'admin@yellowduck.app');
+        })
+        ->update(['status' => 'deactive', 'updated_at' => $now]);
+}
+
+if (Schema::hasTable('users')) {
+    DB::table('users')->updateOrInsert(
+        ['email' => 'user@yellowduck.app'],
+        [
+            'username' => 'yellowduck_user',
+            'firstname' => 'Yellow Duck',
+            'lastname' => 'User',
+            'avatar' => 'avatar.jpg',
+            'status' => 'active',
+            'email_verified_at' => $now,
+            'notes' => null,
+            'phone' => null,
+            'address' => null,
+            'password' => '$2y$12$i2RtWRVNZODO/Jan4.dipOmHDp99541zsstGV2OQW3bkxuwiCf7ly',
+            'stripe_token' => null,
+            'stripe_id' => null,
+            'funds' => 0,
+            'remember_token' => null,
+            'updated_at' => $now,
+            'created_at' => $now,
+        ]
+    );
+}
+
+fwrite(STDOUT, "Database bootstrap complete. SeedApplied={$applied}; SeedFailed={$failed}; OwnerAccounts=ready\n");
 exit(0);
