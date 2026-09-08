@@ -190,6 +190,9 @@ php -r '
   }
 ' || true
 
+echo "Checking SMM provider configuration..."
+php scripts/sync-smmfansfaster.php || true
+
 touch storage/installed
 chown www-data:www-data storage/installed
 php artisan config:clear || true
@@ -198,5 +201,21 @@ php artisan view:clear || true
 php artisan --version
 
 write_health "ready"
+
+if [ "${SMM_STATUS_SYNC_ENABLED:-true}" = "true" ] && [ -n "${SMMFANSFASTER_API_URL:-}" ] && [ -n "${SMMFANSFASTER_API_KEY:-}" ]; then
+  SYNC_INTERVAL="${SMM_STATUS_SYNC_INTERVAL:-120}"
+  case "$SYNC_INTERVAL" in
+    ''|*[!0-9]*) SYNC_INTERVAL=120 ;;
+  esac
+  if [ "$SYNC_INTERVAL" -lt 60 ]; then SYNC_INTERVAL=60; fi
+  echo "Starting provider status sync loop every ${SYNC_INTERVAL}s."
+  (
+    while true; do
+      php scripts/sync-smm-orders.php || true
+      sleep "$SYNC_INTERVAL"
+    done
+  ) &
+fi
+
 echo "Starting Apache on port ${PORT}..."
 exec "$@"
