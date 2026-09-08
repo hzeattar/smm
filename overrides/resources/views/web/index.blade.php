@@ -115,8 +115,8 @@
             <div class="yd-faq-list">
                 @forelse($faqs as $faq)
                     <article class="yd-faq-item">
-                        <h3>{{ Helper::getLang($faq->question) }}</h3>
-                        <div class="answer">{!! Helper::getLang($faq->answer) !!}</div>
+                        <h3>{{ $faq->question }}</h3>
+                        <div class="answer">{!! $faq->answer !!}</div>
                     </article>
                 @empty
                     <article class="yd-faq-item"><h3>كيف أبدأ؟</h3><div class="answer">أنشئ حسابًا، أضف رصيدك، ثم اختر الخدمة المناسبة وأنشئ الطلب.</div></article>
