@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 PORT="${PORT:-8080}"
 
@@ -16,7 +16,6 @@ if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
 fi
 
 # Keep the app bootable before a permanent APP_KEY is configured in Railway.
-# A generated runtime key is stored inside storage for the lifetime of this deployment.
 if [ -z "${APP_KEY:-}" ]; then
   RUNTIME_KEY_FILE="storage/.runtime_app_key"
   if [ -f "$RUNTIME_KEY_FILE" ]; then
@@ -29,7 +28,7 @@ fi
 
 export DB_CONNECTION="${DB_CONNECTION:-mysql}"
 
-# Railway MySQL exposes MYSQL* variables. Explicit DB_* variables still take priority.
+# Railway MySQL exposes MYSQL* variables. Explicit DB_* values take priority.
 RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
 if [ -n "$RAW_DB_HOST" ]; then
   export DB_HOST="$RAW_DB_HOST"
@@ -37,14 +36,18 @@ if [ -n "$RAW_DB_HOST" ]; then
   export DB_DATABASE="${DB_DATABASE:-${MYSQLDATABASE:-railway}}"
   export DB_USERNAME="${DB_USERNAME:-${MYSQLUSER:-root}}"
   export DB_PASSWORD="${DB_PASSWORD:-${MYSQLPASSWORD:-}}"
+  echo "Railway MySQL configuration detected."
+else
+  echo "No MYSQLHOST/DB_HOST reference detected; starting without database initialization."
 fi
 
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache
 
-# Composer build uses --no-scripts for compatibility; complete Laravel discovery now
-# when Railway runtime variables are present and before the app is marked installed.
-php artisan package:discover --ansi || true
+# Runtime preflight: do not hide framework/bootstrap failures.
+php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
+php artisan --version
+php artisan package:discover --ansi
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
@@ -75,9 +78,11 @@ if [ -n "$RAW_DB_HOST" ]; then
     exit 1
   fi
 
+  echo "MySQL is ready. Running migrations..."
   php artisan migrate --force
 
-  # Seed the upstream initial data exactly once.
+  # Seed the upstream initial data exactly once. init.sql contains data rows;
+  # schema creation is handled by Laravel migrations.
   if ! php -r '
     try {
       $pdo = new PDO(
@@ -89,10 +94,13 @@ if [ -n "$RAW_DB_HOST" ]; then
       exit($count > 0 ? 0 : 1);
     } catch (Throwable $e) { exit(1); }
   '; then
+    echo "Seeding initial SMM data..."
     php artisan db:seed --force
+  else
+    echo "Initial SMM data already present; seed skipped."
   fi
 
-  # Apply our brand without changing the application's business logic.
+  # Apply Yellow Duck branding without changing ordering/provider/payment logic.
   php -r '
     try {
       $pdo = new PDO(
@@ -106,7 +114,9 @@ if [ -n "$RAW_DB_HOST" ]; then
         "website_name_1" => "البطة",
         "website_name_2" => "الصفرا",
         "website_desc" => "منصة عربية سهلة وسريعة لإدارة وطلب خدمات السوشيال ميديا من مكان واحد.",
-        "website_keywords" => "خدمات السوشيال ميديا, SMM, التسويق الرقمي, إدارة الخدمات"
+        "website_keywords" => "خدمات السوشيال ميديا, SMM, التسويق الرقمي, إدارة الخدمات",
+        "site_base_color" => "#F6C90E",
+        "site_secondary_color" => "#171717"
       ];
       $stmt = $pdo->prepare("UPDATE settings SET value = :value WHERE name = :name");
       foreach ($settings as $name => $value) {
@@ -125,4 +135,8 @@ if [ -n "$RAW_DB_HOST" ]; then
   php artisan view:clear || true
 fi
 
+# Final framework preflight immediately before serving traffic.
+php artisan --version
+
+echo "Starting Apache on port ${PORT}..."
 exec "$@"
