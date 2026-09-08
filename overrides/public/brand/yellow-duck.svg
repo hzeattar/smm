@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">البطة الصفرا</title>
+  <desc id="desc">Yellow duck brand mark for social media services</desc>
+  <defs>
+    <linearGradient id="duck" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFD95A"/>
+      <stop offset="1" stop-color="#F5B700"/>
+    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#191B20"/>
+      <stop offset="1" stop-color="#2A2D35"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="64" fill="url(#bg)"/>
+  <circle cx="137" cy="96" r="52" fill="url(#duck)"/>
+  <path d="M94 119c-35 10-55 33-55 62 0 18 12 31 34 31h90c27 0 48-19 48-44 0-25-19-43-49-48-17 18-42 25-68 17z" fill="url(#duck)"/>
+  <path d="M177 91c19 2 31 10 40 22-10 7-24 11-42 9-9-1-15-5-19-11 6-11 12-18 21-20z" fill="#FF8C32"/>
+  <circle cx="151" cy="82" r="7" fill="#17191D"/>
+  <circle cx="153" cy="80" r="2" fill="#fff"/>
+  <path d="M72 175c16 8 35 11 57 9" fill="none" stroke="#E4A800" stroke-width="8" stroke-linecap="round" opacity=".65"/>
+  <circle cx="64" cy="65" r="9" fill="#FFD95A" opacity=".22"/>
+  <circle cx="207" cy="55" r="14" fill="#FFD95A" opacity=".13"/>
+</svg>
