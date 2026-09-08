@@ -28,7 +28,6 @@ fi
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
 chown -R www-data:www-data storage bootstrap/cache
 
-# Framework preflight: fail only when Laravel itself cannot bootstrap.
 php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
 php artisan --version
 php artisan package:discover --ansi
@@ -166,23 +165,12 @@ if ! php artisan migrate --force; then
   start_setup_mode "migration_failed" "$@"
 fi
 
-# Seed initial data only when no admin exists yet.
-if ! php -r '
-  require "vendor/autoload.php";
-  $app = require "bootstrap/app.php";
-  $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-  $kernel->bootstrap();
-  exit(Illuminate\Support\Facades\DB::table("admins")->exists() ? 0 : 1);
-'; then
-  echo "Seeding initial SMM data..."
-  if ! php artisan db:seed --force; then
-    start_setup_mode "seed_failed" "$@"
-  fi
-else
-  echo "Initial SMM data already present; seed skipped."
+write_health "seeding"
+echo "Checking and initializing required SMM data..."
+if ! php scripts/bootstrap-db.php; then
+  start_setup_mode "seed_failed" "$@"
 fi
 
-# Apply branding only; provider/order/payment business logic stays untouched.
 php -r '
   require "vendor/autoload.php";
   $app = require "bootstrap/app.php";
