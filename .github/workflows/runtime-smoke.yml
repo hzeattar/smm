@@ -1,0 +1,55 @@
+name: Runtime smoke test
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Railway deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://smm-production-e07a.up.railway.app/railway-health.php"
+          for i in $(seq 1 40); do
+            code=$(curl -sS -o /tmp/health.txt -w '%{http_code}' --max-time 10 "$URL" || true)
+            if [ "$code" = "200" ]; then
+              echo "Health endpoint is ready."
+              exit 0
+            fi
+            echo "Waiting for deployment... attempt $i status=$code"
+            sleep 5
+          done
+          echo "Health endpoint did not become ready." >&2
+          exit 1
+
+      - name: Inspect Laravel runtime
+        id: inspect
+        shell: bash
+        run: |
+          set +e
+          BASE="https://smm-production-e07a.up.railway.app"
+          DIAG=$(curl -sS --max-time 20 "$BASE/yd-runtime-diag-7c91.php")
+          DIAG_CODE=$?
+          ROOT_STATUS=$(curl -sS -o /tmp/root.html -w '%{http_code}' --max-time 20 "$BASE/" || true)
+          LOGIN_STATUS=$(curl -sS -o /tmp/login.html -w '%{http_code}' --max-time 20 "$BASE/login" || true)
+          {
+            echo '## Yellow Duck runtime smoke test'
+            echo
+            echo "- Root HTTP status: **$ROOT_STATUS**"
+            echo "- Login HTTP status: **$LOGIN_STATUS**"
+            echo "- Diagnostic curl exit: **$DIAG_CODE**"
+            echo
+            echo '### Runtime diagnostic'
+            echo '```json'
+            printf '%s\n' "$DIAG"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ROOT_STATUS" -ge 500 ] 2>/dev/null || [ "$LOGIN_STATUS" -ge 500 ] 2>/dev/null || [ "$DIAG_CODE" -ne 0 ]; then
+            exit 1
+          fi
