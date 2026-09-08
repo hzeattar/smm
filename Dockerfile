@@ -1,19 +1,19 @@
-FROM php:8.1-apache-bookworm
+FROM debian:bookworm-slim
 
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
+ENV DEBIAN_FRONTEND=noninteractive \
+    APACHE_DOCUMENT_ROOT=/var/www/html/public \
     COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_MEMORY_LIMIT=-1 \
     COMPOSER_PROCESS_TIMEOUT=2000
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git unzip ca-certificates \
-        libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
-        libonig-dev libcurl4-openssl-dev libxml2-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql mbstring zip gd bcmath curl xml opcache \
+        apache2 libapache2-mod-php8.2 \
+        php8.2-cli php8.2-common php8.2-mysql php8.2-curl php8.2-mbstring \
+        php8.2-xml php8.2-zip php8.2-gd php8.2-bcmath php8.2-opcache \
+        git unzip ca-certificates curl \
     && a2enmod rewrite headers expires \
+    && sed -ri 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2.2 /usr/bin/composer /usr/local/bin/composer
@@ -28,11 +28,12 @@ RUN git clone --depth 1 --branch master https://github.com/mediarayek-me/smmboos
 
 COPY overrides/ /var/www/html/
 COPY docker/000-default.conf /etc/apache2/sites-available/000-default.conf
-COPY docker/php.ini /usr/local/etc/php/conf.d/railway.ini
+COPY docker/php.ini /etc/php/8.2/apache2/conf.d/99-railway.ini
+COPY docker/php.ini /etc/php/8.2/cli/conf.d/99-railway.ini
 COPY docker/entrypoint.sh /usr/local/bin/railway-entrypoint
 
-# Keep framework boot out of the image build. Package discovery is performed at runtime
-# after Railway environment variables are available.
+# Avoid booting Laravel while the image is being built. Runtime discovery happens
+# after Railway injects environment variables.
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader \
     && chmod +x /usr/local/bin/railway-entrypoint \
@@ -40,4 +41,4 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
 
 EXPOSE 8080
 ENTRYPOINT ["railway-entrypoint"]
-CMD ["apache2-foreground"]
+CMD ["apache2ctl", "-D", "FOREGROUND"]
