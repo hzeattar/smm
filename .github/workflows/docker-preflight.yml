@@ -1,0 +1,46 @@
+name: Docker Preflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker/**
+      - overrides/**
+      - .github/workflows/docker-preflight.yml
+  workflow_dispatch:
+
+jobs:
+  docker-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build --progress=plain -t smm-preflight .
+
+      - name: Verify Composer autoload
+        run: docker run --rm --entrypoint php smm-preflight -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { exit(1); } echo "autoload OK\n";'
+
+      - name: Verify Laravel CLI bootstrap
+        run: docker run --rm --entrypoint php smm-preflight artisan --version
+
+      - name: Boot container without database
+        run: |
+          docker run -d --name smm-preflight-run -e PORT=8080 -p 8080:8080 smm-preflight
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/ >/tmp/homepage.html; then
+              echo "HTTP preflight OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Container logs:"
+          docker logs smm-preflight-run
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs smm-preflight-run 2>&1 || true
