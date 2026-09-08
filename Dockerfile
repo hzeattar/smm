@@ -1,4 +1,4 @@
-FROM php:8.0-apache-bullseye
+FROM php:8.2-apache-bookworm
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     COMPOSER_ALLOW_SUPERUSER=1
