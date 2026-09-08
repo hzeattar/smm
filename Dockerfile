@@ -23,12 +23,16 @@ COPY --from=composer:2.2 /usr/bin/composer /usr/local/bin/composer
 WORKDIR /var/www/html
 
 # Pin the exact upstream revision so future upstream changes cannot silently
-# alter a Railway build.
+# alter a Railway build. Keep the upstream SQL dump privately inside the image
+# only as a schema-only recovery source; it is never served or imported as data.
 RUN git clone --no-tags https://github.com/mediarayek-me/smmbooster.git /tmp/smmbooster \
     && cd /tmp/smmbooster \
     && git checkout "${SMMBOOSTER_COMMIT}" \
     && cp -a /tmp/smmbooster/. /var/www/html/ \
     && rm -rf /tmp/smmbooster /var/www/html/.git \
+    && mkdir -p /opt/smm \
+    && cp /var/www/html/smmstore_test.sql /opt/smm/schema.sql \
+    && mv /var/www/html/artisan /var/www/html/artisan.real \
     && rm -f /var/www/html/api-purchasecode.php /var/www/html/smmstore_test.sql
 
 COPY overrides/ /var/www/html/
@@ -45,7 +49,7 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
     && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader \
     && php -r '$p="vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php"; $s=file_get_contents($p); $s2=str_replace("error_reporting(-1);", "error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);", $s, $n); if ($n < 1) { fwrite(STDERR, "Laravel PHP 8.1 compatibility patch target not found\n"); exit(1); } file_put_contents($p, $s2);' \
     && php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); } echo "Composer autoload preflight OK\n";' \
-    && chmod +x /usr/local/bin/railway-entrypoint \
+    && chmod +x /usr/local/bin/railway-entrypoint /var/www/html/artisan \
     && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 8080
