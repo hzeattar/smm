@@ -1,0 +1,49 @@
+name: Import SMMBooster Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-smmbooster.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream SMMBooster
+        run: |
+          git clone --depth 1 --branch master https://github.com/mediarayek-me/smmbooster.git /tmp/smmbooster
+
+      - name: Sync application source
+        run: |
+          rsync -a --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'Dockerfile' \
+            --exclude 'railway.json' \
+            --exclude '.dockerignore' \
+            --exclude 'docker/' \
+            /tmp/smmbooster/ ./
+          rm -f smmstore_test.sql
+          rm -rf /tmp/smmbooster
+
+      - name: Commit imported source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No upstream changes to import.'
+            exit 0
+          fi
+          git commit -m 'Import SMMBooster application source'
+          git push origin HEAD:main
