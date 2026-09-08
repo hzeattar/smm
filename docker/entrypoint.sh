@@ -6,31 +6,73 @@ PORT="${PORT:-8080}"
 sed -ri "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s/<VirtualHost \*:[0-9]+>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
-if [ -f /var/www/html/app/config.php ]; then
-  cat > /var/www/html/app/config.php <<'PHP'
-<?php
-// Runtime configuration for Railway / container deployments.
-define('DB_HOST', getenv('MYSQLHOST') ?: getenv('DB_HOST') ?: '127.0.0.1');
-define('DB_PORT', getenv('MYSQLPORT') ?: getenv('DB_PORT') ?: '3306');
-define('DB_USER', getenv('MYSQLUSER') ?: getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('MYSQLPASSWORD') ?: getenv('DB_PASS') ?: '');
-define('DB_NAME', getenv('MYSQLDATABASE') ?: getenv('DB_NAME') ?: 'railway');
-define('TIMEZONE', getenv('APP_TIMEZONE') ?: 'UTC');
-define('ENCRYPTION_KEY', getenv('APP_ENCRYPTION_KEY') ?: 'change-this-in-railway');
-PHP
+export APP_ENV="${APP_ENV:-production}"
+export APP_DEBUG="${APP_DEBUG:-false}"
+export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
+export DB_CONNECTION="${DB_CONNECTION:-mysql}"
+
+# Railway MySQL exposes MYSQL* variables. Explicit DB_* variables still take priority.
+RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
+if [ -n "$RAW_DB_HOST" ]; then
+  export DB_HOST="$RAW_DB_HOST"
+  export DB_PORT="${DB_PORT:-${MYSQLPORT:-3306}}"
+  export DB_DATABASE="${DB_DATABASE:-${MYSQLDATABASE:-railway}}"
+  export DB_USERNAME="${DB_USERNAME:-${MYSQLUSER:-root}}"
+  export DB_PASSWORD="${DB_PASSWORD:-${MYSQLPASSWORD:-}}"
 fi
 
-DB_CONFIG=/var/www/html/app/config/database.php
-if [ -f "$DB_CONFIG" ] && ! grep -q "'port'.*DB_PORT" "$DB_CONFIG"; then
-  sed -i "/'hostname'.*DB_HOST/a\\\t'port' => defined('DB_PORT') ? DB_PORT : 3306," "$DB_CONFIG"
-fi
+mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
 
-CI_CONFIG=/var/www/html/app/config/config.php
-if [ -f "$CI_CONFIG" ]; then
-  sed -i "s#\$config\['base_url'\] = '';#\$config['base_url'] = getenv('APP_URL') ?: '';#" "$CI_CONFIG" || true
-fi
+php artisan config:clear || true
+php artisan route:clear || true
+php artisan view:clear || true
 
-mkdir -p /var/www/html/app/cache
-chown -R www-data:www-data /var/www/html/app/cache 2>/dev/null || true
+if [ -n "$RAW_DB_HOST" ]; then
+  echo "Waiting for MySQL..."
+  DB_READY=0
+  for i in $(seq 1 30); do
+    if php -r '
+      try {
+        new PDO(
+          "mysql:host=".getenv("DB_HOST").";port=".getenv("DB_PORT").";dbname=".getenv("DB_DATABASE"),
+          getenv("DB_USERNAME"),
+          getenv("DB_PASSWORD"),
+          [PDO::ATTR_TIMEOUT => 3]
+        );
+        exit(0);
+      } catch (Throwable $e) { exit(1); }
+    '; then
+      DB_READY=1
+      break
+    fi
+    sleep 2
+  done
+
+  if [ "$DB_READY" -ne 1 ]; then
+    echo "MySQL did not become ready in time."
+    exit 1
+  fi
+
+  php artisan migrate --force
+
+  # Seed the upstream initial data exactly once.
+  if ! php -r '
+    try {
+      $pdo = new PDO(
+        "mysql:host=".getenv("DB_HOST").";port=".getenv("DB_PORT").";dbname=".getenv("DB_DATABASE"),
+        getenv("DB_USERNAME"),
+        getenv("DB_PASSWORD")
+      );
+      $count = (int) $pdo->query("SELECT COUNT(*) FROM admins")->fetchColumn();
+      exit($count > 0 ? 0 : 1);
+    } catch (Throwable $e) { exit(1); }
+  '; then
+    php artisan db:seed --force
+  fi
+
+  touch storage/installed
+  chown www-data:www-data storage/installed
+fi
 
 exec "$@"
