@@ -15,24 +15,32 @@
 
     <section class="yd-dashboard-stats" aria-label="إحصائيات الحساب">
         <article>
-            <span class="yd-stat-icon yd-blue"><i class="fa fa-wallet"></i></span>
-            <small>رصيدك الحالي</small>
-            <strong>${{ number_format((float) $balance, 4) }}</strong>
+            <span class="yd-stat-icon"><i class="fa fa-wallet"></i></span>
+            <div>
+                <small>رصيدك الحالي</small>
+                <strong>${{ number_format((float) $balance, 4) }}</strong>
+            </div>
         </article>
         <article>
-            <span class="yd-stat-icon yd-orange"><i class="fa fa-shopping-bag"></i></span>
-            <small>طلباتك</small>
-            <strong>{{ number_format((int) $ordrs_count) }}</strong>
+            <span class="yd-stat-icon"><i class="fa fa-shopping-bag"></i></span>
+            <div>
+                <small>طلباتك</small>
+                <strong>{{ number_format((int) $ordrs_count) }}</strong>
+            </div>
         </article>
         <article>
-            <span class="yd-stat-icon yd-blue"><i class="fa fa-dollar-sign"></i></span>
-            <small>إجمالي الصرف</small>
-            <strong>${{ number_format((float) $total_spent, 4) }}</strong>
+            <span class="yd-stat-icon"><i class="fa fa-dollar-sign"></i></span>
+            <div>
+                <small>إجمالي الصرف</small>
+                <strong>${{ number_format((float) $total_spent, 4) }}</strong>
+            </div>
         </article>
         <article>
-            <span class="yd-stat-icon yd-orange"><i class="fa fa-layer-group"></i></span>
-            <small>الخدمات المتاحة</small>
-            <strong>{{ number_format((int) $services_count) }}</strong>
+            <span class="yd-stat-icon"><i class="fa fa-layer-group"></i></span>
+            <div>
+                <small>الخدمات المتاحة</small>
+                <strong>{{ number_format((int) $services_count) }}</strong>
+            </div>
         </article>
     </section>
 
@@ -67,11 +75,6 @@
                 <summary>ماذا لو رصيدي لا يكفي؟</summary>
                 <p>سيظهر تنبيه واضح ولن يتم إرسال الطلب للمزود.</p>
             </details>
-            <div class="yd-video-box">
-                <i class="fab fa-youtube"></i>
-                <strong>دليل سريع للطلب</strong>
-                <span>اختر الخدمة بعناية وتأكد من الحد الأدنى والأقصى.</span>
-            </div>
         </aside>
 
         <section class="yd-order-card">
@@ -102,7 +105,7 @@
                         </select>
                     </label>
 
-                    <label class="yd-wide">
+                    <label class="yd-wide yd-service-field">
                         <span>الخدمة</span>
                         <select id="yd-service" name="service_id" required disabled>
                             <option value="">اختر القسم أولًا</option>
@@ -131,9 +134,9 @@
                         <input id="yd-charge" type="text" value="$0.0000" readonly>
                     </label>
 
-                    <label class="yd-wide">
+                    <label class="yd-wide yd-description-field">
                         <span>وصف الخدمة</span>
-                        <textarea id="yd-description" readonly placeholder="سيظهر وصف الخدمة بعد الاختيار"></textarea>
+                        <div id="yd-description" class="yd-description-box">سيظهر وصف الخدمة بعد الاختيار</div>
                     </label>
 
                     <label class="yd-wide">
@@ -182,16 +185,45 @@
         return '$' + n.toFixed(4);
     }
 
+    function cleanText(value) {
+        var holder = document.createElement('div');
+        holder.innerHTML = String(value || '');
+        return (holder.textContent || holder.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function describeService(item) {
+        var raw = item && item.description ? String(item.description).trim() : '';
+        if (!raw) {
+            return 'لا يوجد وصف تفصيلي من المزود لهذه الخدمة. راجع الحد الأدنى والأقصى والسعر قبل الإرسال.';
+        }
+
+        try {
+            var meta = JSON.parse(raw);
+            if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+                var lines = [];
+                lines.push('نوع الخدمة: ' + (meta.provider_type || item.type || 'Default'));
+                lines.push(meta.simple_order_supported ? 'هذه الخدمة تدعم الطلب العادي المباشر.' : 'هذه الخدمة لا تدعم الطلب العادي المباشر حاليًا.');
+                lines.push(meta.refill ? 'التعويض: متاح حسب سياسة المزود.' : 'التعويض: غير متاح لهذه الخدمة.');
+                lines.push(meta.cancel ? 'الإلغاء: متاح حسب سياسة المزود.' : 'الإلغاء: غير متاح بعد إرسال الطلب.');
+                return lines.join('\n');
+            }
+        } catch (e) {
+            return cleanText(raw) || 'لا يوجد وصف تفصيلي من المزود لهذه الخدمة.';
+        }
+
+        return cleanText(raw) || 'لا يوجد وصف تفصيلي من المزود لهذه الخدمة.';
+    }
+
     function updateMeta() {
         selected = services.find(function (item) { return String(item.id) === String(service.value); }) || null;
         if (!selected) {
             meta.innerHTML = '<div><small>الحد الأدنى</small><strong>-</strong></div><div><small>الحد الأقصى</small><strong>-</strong></div><div><small>السعر لكل 1000</small><strong>-</strong></div><div><small>النوع</small><strong>-</strong></div>';
-            desc.value = '';
+            desc.textContent = 'سيظهر وصف الخدمة بعد الاختيار';
             charge.value = '$0.0000';
             return;
         }
         meta.innerHTML = '<div><small>الحد الأدنى</small><strong>' + selected.min + '</strong></div><div><small>الحد الأقصى</small><strong>' + selected.max + '</strong></div><div><small>السعر لكل 1000</small><strong>' + money(selected.rate) + '</strong></div><div><small>النوع</small><strong>' + (selected.type || 'api') + '</strong></div>';
-        desc.value = selected.description || 'لا يوجد وصف لهذه الخدمة.';
+        desc.textContent = describeService(selected);
         updateCharge();
     }
 
