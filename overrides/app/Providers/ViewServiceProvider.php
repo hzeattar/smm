@@ -40,8 +40,17 @@ class ViewServiceProvider extends ServiceProvider
         });
 
         view()->composer('admin.partials.header', function ($view) {
+            $languages = collect();
+            $lang = null;
             $notifications = collect();
             $notificationsCount = 0;
+            try {
+                $languages = Language::getActive();
+                $lang = Helper::getCurrentLanguage();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
             try {
                 $user = Auth::guard('admin')->check() ? Auth::guard('admin')->user() : Auth::user();
                 if ($user) {
@@ -56,6 +65,8 @@ class ViewServiceProvider extends ServiceProvider
             } catch (\Throwable $e) {
                 report($e);
             }
+            $view->with('languages', $languages);
+            $view->with('lang', $lang);
             $view->with('notifications', $notifications);
             $view->with('notifications_count', $notificationsCount);
         });
