@@ -9,206 +9,137 @@ export APP_ENV="${APP_ENV:-production}"
 export APP_DEBUG="${APP_DEBUG:-false}"
 export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
 export APP_NAME="${APP_NAME:-البطة الصفرا لخدمات السوشيال ميديا}"
-export DB_CONNECTION="${DB_CONNECTION:-mysql}"
+export DB_CONNECTION="mysql"
+export SESSION_DRIVER="${SESSION_DRIVER:-file}"
+export CACHE_DRIVER="${CACHE_DRIVER:-file}"
+export QUEUE_CONNECTION="${QUEUE_CONNECTION:-sync}"
+export SESSION_COOKIE="${SESSION_COOKIE:-yellow_duck_session_v2}"
 
 if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
   export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
 fi
 
+# Railway MySQL references are the source of truth. Do not preserve placeholder
+# Laravel DB_* values such as DB_DATABASE=forge when MYSQL* values exist.
+if [ -n "${MYSQLHOST:-}" ]; then export DB_HOST="$MYSQLHOST"; fi
+if [ -n "${MYSQLPORT:-}" ]; then export DB_PORT="$MYSQLPORT"; else export DB_PORT="${DB_PORT:-3306}"; fi
+if [ -n "${MYSQLDATABASE:-}" ]; then export DB_DATABASE="$MYSQLDATABASE"; fi
+if [ -n "${MYSQLUSER:-}" ]; then export DB_USERNAME="$MYSQLUSER"; fi
+if [ -n "${MYSQLPASSWORD:-}" ]; then export DB_PASSWORD="$MYSQLPASSWORD"; fi
+
+# Stable fallback key when Railway APP_KEY has not been configured yet. The seed
+# is never logged or written to Git; a real APP_KEY variable still takes priority.
 if [ -z "${APP_KEY:-}" ]; then
-  RUNTIME_KEY_FILE="storage/.runtime_app_key"
-  if [ -f "$RUNTIME_KEY_FILE" ]; then
-    export APP_KEY="$(cat "$RUNTIME_KEY_FILE")"
+  KEY_SEED="${YELLOWDUCK_APP_KEY_SEED:-${MYSQLPASSWORD:-${DB_PASSWORD:-}}}"
+  if [ -n "$KEY_SEED" ]; then
+    export KEY_SEED
+    export APP_KEY="$(php -r '$s=getenv("KEY_SEED"); echo "base64:".base64_encode(hash("sha256", "yellow-duck-smm|".$s, true));')"
+    unset KEY_SEED
   else
     export APP_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
-    printf '%s' "$APP_KEY" > "$RUNTIME_KEY_FILE"
   fi
 fi
 
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
 chown -R www-data:www-data storage bootstrap/cache
 
+# Materialize the runtime environment so both CLI PHP and Apache/mod_php see
+# the same DB/app configuration. Secrets are not printed to stdout.
+php -r '
+$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION"];
+foreach($keys as $k){
+  $v=getenv($k);
+  if($v===false) continue;
+  $v=str_replace(["\\","\"","\r","\n"],["\\\\","\\\"","","\\n"],$v);
+  echo $k."=\"".$v."\"\n";
+}
+' > .env.runtime
+mv .env.runtime .env
+chown www-data:www-data .env
+chmod 600 .env
+
 php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); }'
-php artisan --version
-php artisan package:discover --ansi
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
 
-ORIGINAL_DATABASE_URL="${DATABASE_URL:-}"
-RAW_DB_HOST="${DB_HOST:-${MYSQLHOST:-}}"
-
-HAS_DATABASE_URL=false; [ -n "$ORIGINAL_DATABASE_URL" ] && HAS_DATABASE_URL=true
-HAS_MYSQL_URL=false; [ -n "${MYSQL_URL:-}" ] && HAS_MYSQL_URL=true
-HAS_MYSQL_PUBLIC_URL=false; [ -n "${MYSQL_PUBLIC_URL:-}" ] && HAS_MYSQL_PUBLIC_URL=true
-HAS_HOST=false; [ -n "$RAW_DB_HOST" ] && HAS_HOST=true
-HAS_USER=false; [ -n "${DB_USERNAME:-${MYSQLUSER:-}}" ] && HAS_USER=true
-HAS_PASSWORD=false; [ -n "${DB_PASSWORD:-${MYSQLPASSWORD:-}}" ] && HAS_PASSWORD=true
-HAS_DATABASE=false; [ -n "${DB_DATABASE:-${MYSQLDATABASE:-}}" ] && HAS_DATABASE=true
-
-if [ -n "$RAW_DB_HOST" ]; then
-  export DB_HOST="$RAW_DB_HOST"
-  export DB_PORT="${DB_PORT:-${MYSQLPORT:-3306}}"
-  export DB_DATABASE="${DB_DATABASE:-${MYSQLDATABASE:-railway}}"
-  export DB_USERNAME="${DB_USERNAME:-${MYSQLUSER:-root}}"
-  export DB_PASSWORD="${DB_PASSWORD:-${MYSQLPASSWORD:-}}"
-fi
-
-DB_SOURCE="none"
-DB_READY=0
-
 write_health() {
-  local connection="$1"
+  local state="$1"
   cat > public/boot-health.json <<EOF
-{"service":"yellow-duck-smm","framework":"ok","database_source":"${DB_SOURCE}","database_url_ref":${HAS_DATABASE_URL},"mysql_url_ref":${HAS_MYSQL_URL},"mysql_public_url_ref":${HAS_MYSQL_PUBLIC_URL},"host_ref":${HAS_HOST},"user_ref":${HAS_USER},"password_ref":${HAS_PASSWORD},"database_ref":${HAS_DATABASE},"connection":"${connection}"}
+{"service":"yellow-duck-smm","state":"${state}","db_host_configured":$([ -n "${DB_HOST:-}" ] && echo true || echo false),"db_name_configured":$([ -n "${DB_DATABASE:-}" ] && echo true || echo false)}
 EOF
 }
 
-start_setup_mode() {
-  local reason="$1"
-  shift
-  write_health "$reason"
-  echo "Starting safe setup mode: ${reason}"
-  rm -f public/index.html
-  if [ -f public/index.php ]; then
-    mv public/index.php public/index.laravel.php
-  fi
-  cp public/setup.html public/index.html
-  exec "$@"
-}
-
-test_url_connection() {
-  local candidate="$1"
-  DB_TEST_URL="$candidate" php -r '
-    try {
-      $url = getenv("DB_TEST_URL");
-      $p = parse_url($url);
-      if (!$p || empty($p["host"])) { exit(1); }
-      $host = $p["host"];
-      $port = $p["port"] ?? 3306;
-      $db = ltrim($p["path"] ?? "", "/");
-      $user = urldecode($p["user"] ?? "");
-      $pass = urldecode($p["pass"] ?? "");
-      $pdo = new PDO(
-        "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4",
-        $user,
-        $pass,
-        [PDO::ATTR_TIMEOUT => 3, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-      );
-      $pdo->query("SELECT 1");
-      exit(0);
-    } catch (Throwable $e) { exit(1); }
-  '
-}
-
-test_individual_connection() {
+pdo_test() {
   php -r '
-    try {
-      $pdo = new PDO(
-        "mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT") ?: 3306).";dbname=".getenv("DB_DATABASE").";charset=utf8mb4",
-        getenv("DB_USERNAME"),
-        getenv("DB_PASSWORD"),
-        [PDO::ATTR_TIMEOUT => 3, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-      );
-      $pdo->query("SELECT 1");
-      exit(0);
-    } catch (Throwable $e) { exit(1); }
+  try {
+    $pdo=new PDO("mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT")?:3306).";dbname=".getenv("DB_DATABASE").";charset=utf8mb4", getenv("DB_USERNAME"), getenv("DB_PASSWORD"), [PDO::ATTR_TIMEOUT=>3, PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+    $pdo->query("SELECT 1");
+    exit(0);
+  } catch(Throwable $e) { exit(1); }
   '
 }
 
-write_health "checking"
+schema_ready() {
+  php -r '
+  try {
+    $db=getenv("DB_DATABASE");
+    $pdo=new PDO("mysql:host=".getenv("DB_HOST").";port=".(getenv("DB_PORT")?:3306).";dbname=".$db.";charset=utf8mb4", getenv("DB_USERNAME"), getenv("DB_PASSWORD"), [PDO::ATTR_TIMEOUT=>3, PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+    $required=["settings","users","admins","categories","services","orders","api_providers"];
+    $q=$pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=? AND table_name IN (".implode(",",array_fill(0,count($required),"?")).")");
+    $q->execute(array_merge([$db],$required));
+    exit(((int)$q->fetchColumn()===count($required))?0:1);
+  } catch(Throwable $e) { exit(1); }
+  '
+}
 
-if [ -z "$ORIGINAL_DATABASE_URL" ] && [ -z "${MYSQL_URL:-}" ] && [ -z "${MYSQL_PUBLIC_URL:-}" ] && [ -z "$RAW_DB_HOST" ]; then
-  start_setup_mode "not_configured" "$@"
+if [ -z "${DB_HOST:-}" ] || [ -z "${DB_DATABASE:-}" ] || [ -z "${DB_USERNAME:-}" ]; then
+  write_health "database_not_configured"
+  echo "Database configuration is incomplete; refusing to start Laravel with placeholder values."
+  exit 78
 fi
 
-echo "Testing Railway MySQL connection references..."
-for round in $(seq 1 10); do
-  if [ -n "$ORIGINAL_DATABASE_URL" ] && test_url_connection "$ORIGINAL_DATABASE_URL"; then
-    export DATABASE_URL="$ORIGINAL_DATABASE_URL"
-    DB_SOURCE="DATABASE_URL"
-    DB_READY=1
-    break
-  fi
-
-  if [ -n "${MYSQL_URL:-}" ] && test_url_connection "$MYSQL_URL"; then
-    export DATABASE_URL="$MYSQL_URL"
-    DB_SOURCE="MYSQL_URL"
-    DB_READY=1
-    break
-  fi
-
-  if [ -n "$RAW_DB_HOST" ] && test_individual_connection; then
-    unset DATABASE_URL || true
-    DB_SOURCE="individual_vars"
-    DB_READY=1
-    break
-  fi
-
-  if [ -n "${MYSQL_PUBLIC_URL:-}" ] && test_url_connection "$MYSQL_PUBLIC_URL"; then
-    export DATABASE_URL="$MYSQL_PUBLIC_URL"
-    DB_SOURCE="MYSQL_PUBLIC_URL"
-    DB_READY=1
-    break
-  fi
-
+write_health "waiting_for_database"
+echo "Waiting for Railway MySQL..."
+DB_OK=0
+for _ in $(seq 1 20); do
+  if pdo_test; then DB_OK=1; break; fi
   sleep 2
 done
-
-if [ "$DB_READY" -ne 1 ]; then
-  start_setup_mode "unreachable" "$@"
+if [ "$DB_OK" -ne 1 ]; then
+  write_health "database_unreachable"
+  echo "Railway MySQL is unreachable with the configured MYSQL* references."
+  exit 79
 fi
 
-write_health "connected"
-echo "MySQL connected via ${DB_SOURCE}. Running migrations..."
-if ! php artisan migrate --force; then
-  start_setup_mode "migration_failed" "$@"
+write_health "database_connected"
+
+if schema_ready; then
+  echo "Existing SMM schema detected; skipping Laravel migrations and bootstrap seed."
+else
+  echo "Incomplete SMM schema detected; applying safe migration/bootstrap recovery."
+  php artisan migrate --force
+  php scripts/bootstrap-db.php
 fi
-
-write_health "seeding"
-echo "Checking and initializing required SMM data..."
-if ! php scripts/bootstrap-db.php; then
-  start_setup_mode "seed_failed" "$@"
-fi
-
-php -r '
-  require "vendor/autoload.php";
-  $app = require "bootstrap/app.php";
-  $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-  $kernel->bootstrap();
-  $settings = [
-    "website_title" => "البطة الصفرا لخدمات السوشيال ميديا",
-    "website_name_1" => "البطة",
-    "website_name_2" => "الصفرا",
-    "website_desc" => "منصة عربية سهلة وسريعة لإدارة وطلب خدمات السوشيال ميديا من مكان واحد.",
-    "website_keywords" => "خدمات السوشيال ميديا, SMM, التسويق الرقمي, إدارة الخدمات",
-    "site_base_color" => "#F6C90E",
-    "site_secondary_color" => "#171717"
-  ];
-  foreach ($settings as $name => $value) {
-    Illuminate\Support\Facades\DB::table("settings")->where("name", $name)->update(["value" => $value]);
-  }
-' || true
-
-echo "Checking SMM provider configuration..."
-php scripts/sync-smmfansfaster.php || true
 
 touch storage/installed
 chown www-data:www-data storage/installed
+
+# Refresh managed provider data only after the database is confirmed healthy.
+if [ -f scripts/sync-smmfansfaster.php ]; then
+  php scripts/sync-smmfansfaster.php || true
+fi
+
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
-php artisan --version
 
 write_health "ready"
 
-if [ "${SMM_STATUS_SYNC_ENABLED:-true}" = "true" ] && [ -n "${SMMFANSFASTER_API_URL:-}" ] && [ -n "${SMMFANSFASTER_API_KEY:-}" ]; then
+if [ "${SMM_STATUS_SYNC_ENABLED:-true}" = "true" ] && [ -n "${SMMFANSFASTER_API_URL:-}" ] && [ -n "${SMMFANSFASTER_API_KEY:-}" ] && [ -f scripts/sync-smm-orders.php ]; then
   SYNC_INTERVAL="${SMM_STATUS_SYNC_INTERVAL:-120}"
-  case "$SYNC_INTERVAL" in
-    ''|*[!0-9]*) SYNC_INTERVAL=120 ;;
-  esac
+  case "$SYNC_INTERVAL" in ''|*[!0-9]*) SYNC_INTERVAL=120 ;; esac
   if [ "$SYNC_INTERVAL" -lt 60 ]; then SYNC_INTERVAL=60; fi
-  echo "Starting provider status sync loop every ${SYNC_INTERVAL}s."
   (
     while true; do
       php scripts/sync-smm-orders.php || true
