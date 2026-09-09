@@ -42,8 +42,17 @@ class DashboardController extends Controller
 
         $categories = collect();
         try {
-            if (Schema::hasTable('categories')) {
-                $categories = Category::where('status', 'active')->orderBy('sort', 'desc')->orderBy('name')->get();
+            if (Schema::hasTable('categories') && Schema::hasTable('services')) {
+                $activeCategoryIds = Service::where('status', 'active')
+                    ->whereNotNull('category_id')
+                    ->distinct()
+                    ->pluck('category_id');
+
+                $categories = Category::where('status', 'active')
+                    ->whereIn('id', $activeCategoryIds)
+                    ->orderBy('sort', 'desc')
+                    ->orderBy('name')
+                    ->get();
             }
         } catch (\Throwable $e) {
             report($e);

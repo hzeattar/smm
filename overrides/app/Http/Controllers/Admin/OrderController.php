@@ -202,7 +202,7 @@ class OrderController extends Controller
 
     public function getServices($category_id)
     {
-        $services = Service::where('category_id',$category_id)->where('status','active')->get();
+        $services = Service::where('category_id',$category_id)->where('status','active')->orderBy('name')->get();
         return response()->json($services, 200);
     }
 }

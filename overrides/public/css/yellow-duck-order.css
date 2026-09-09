@@ -1,1 +1,485 @@
-#app > .yd-order-shell{margin:0!important;padding:0!important;min-height:calc(100vh - 68px);background:#f4f5f7;color:#16181d}.yd-order-shell{font-family:"Cairo","Tajawal","Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.yd-order-hero{min-height:150px;background:#17191f;background-image:linear-gradient(135deg,#17191f 0%,#20242c 58%,#101216 100%);display:grid;place-items:center;text-align:center;color:#fff;overflow:hidden;border-bottom:4px solid #f7c51e}.yd-order-hero-inner p{margin:0 0 8px;font-size:16px;font-weight:800;color:#ffe585}.yd-order-hero-inner h1{margin:0;font-size:34px;font-weight:900;letter-spacing:0}.yd-dashboard-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;width:min(100% - 28px,1440px);margin:-38px auto 18px;position:relative;z-index:2}.yd-dashboard-stats article{background:#fff;border:1px solid #e7e9ee;border-radius:8px;min-height:86px;padding:16px 18px;box-shadow:0 12px 28px rgba(23,25,31,.08);display:flex;align-items:center;justify-content:space-between;gap:14px;overflow:hidden}.yd-dashboard-stats article>div{min-width:0;text-align:right}.yd-dashboard-stats small{display:block;color:#69707d;font-size:12px;font-weight:800;margin-bottom:8px;white-space:nowrap}.yd-dashboard-stats strong{display:block;font-size:22px;line-height:1.15;color:#101216;font-weight:900;overflow-wrap:anywhere}.yd-stat-icon{flex:0 0 40px;width:40px;height:40px;border-radius:8px;display:grid;place-items:center;background:#f7c51e;color:#17191f;font-size:17px}.yd-platform-band{width:min(100% - 28px,1440px);margin:0 auto 18px;background:#fff;border:1px solid #e7e9ee;border-radius:8px;padding:18px;box-shadow:0 8px 22px rgba(23,25,31,.05)}.yd-platform-title{text-align:right;font-size:18px;font-weight:900;margin-bottom:14px;color:#17191f}.yd-platforms{display:grid;grid-template-columns:repeat(10,minmax(48px,1fr));gap:12px}.yd-platforms button{height:46px;border:1px solid #dde1e8;border-radius:8px;background:#fff;color:#17191f;font-size:23px;display:grid;place-items:center;cursor:pointer}.yd-platforms button:hover{border-color:#f7c51e;background:#fff9df}.yd-platforms .fa-instagram{color:#e1306c}.yd-platforms .fa-facebook-f{color:#1877f2}.yd-platforms .fa-youtube{color:#f00}.yd-platforms .fa-tiktok{color:#111}.yd-platforms .fa-telegram-plane{color:#229ed9}.yd-platforms .fa-twitter{color:#1da1f2}.yd-platforms .fa-snapchat-ghost{color:#e4b900}.yd-platforms .fa-spotify{color:#1db954}.yd-platforms .fa-linkedin-in{color:#0a66c2}.yd-platforms .fa-discord{color:#5865f2}.yd-workspace{width:min(100% - 28px,1440px);margin:0 auto 40px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start;direction:ltr}.yd-order-card,.yd-help-panel{direction:rtl}.yd-order-card{background:#fff;border:1px solid #e1e5ec;border-radius:8px;box-shadow:0 12px 28px rgba(23,25,31,.07);padding:20px;min-width:0}.yd-order-card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.yd-order-card h2{margin:0;font-size:22px;font-weight:900;color:#17191f}.yd-order-tabs{display:flex;gap:8px;flex-wrap:wrap}.yd-order-tabs button,.yd-order-tabs a{border:1px solid #dfe3ea;background:#f8fafc;color:#17191f;border-radius:999px;padding:9px 15px;font-weight:800;text-decoration:none;line-height:1}.yd-order-tabs .active{background:#f7c51e;color:#17191f;border-color:#f7c51e}.yd-order-tabs button:disabled{opacity:.62}.yd-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.yd-form-grid label{display:grid;gap:7px;color:#17191f;font-weight:800;min-width:0}.yd-form-grid span{font-size:13px;color:#4f5663}.yd-form-grid input,.yd-form-grid select,.yd-form-grid textarea,.yd-description-box{width:100%;border:1px solid #dfe3ea;border-radius:8px;background:#f8fafc;min-height:44px;padding:10px 12px;color:#17191f}.yd-form-grid textarea{min-height:96px;resize:vertical}.yd-description-box{min-height:116px;white-space:pre-line;line-height:1.75;font-weight:650;color:#2d3340;overflow:auto}.yd-form-grid input:focus,.yd-form-grid select:focus,.yd-form-grid textarea:focus{outline:0;border-color:#f7c51e;box-shadow:0 0 0 3px rgba(247,197,30,.2)}.yd-wide{grid-column:1 / -1}.yd-service-field select{min-height:48px}.yd-service-meta{grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.yd-service-meta div{border:1px solid #dfe3ea;border-radius:8px;background:#fffdf4;padding:12px;min-width:0}.yd-service-meta small{display:block;color:#68707e;font-weight:800;margin-bottom:5px}.yd-service-meta strong{display:block;font-size:16px;overflow-wrap:anywhere}.yd-help-panel{background:#17191f;border-radius:8px;padding:16px;color:#fff;box-shadow:0 12px 28px rgba(23,25,31,.12);border-top:4px solid #f7c51e}.yd-help-panel h2{margin:0 0 14px;text-align:center;font-size:19px;font-weight:900;color:#ffe585}.yd-help-panel details{background:#fff;color:#17191f;border-radius:8px;margin:8px 0;overflow:hidden}.yd-help-panel summary{cursor:pointer;list-style:none;padding:10px 14px;font-weight:900}.yd-help-panel p{margin:0;padding:0 14px 12px;color:#555d6a;line-height:1.8}.yd-order-message{display:none;margin-top:16px;border-radius:8px;padding:12px 14px;font-weight:800}.yd-order-message.error{display:block;background:#fff0f0;color:#9f1717;border:1px solid #ffc8c8}.yd-order-message.success{display:block;background:#effaf2;color:#146229;border:1px solid #bfe8c8}.yd-order-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;border-top:1px solid #edf0f4;padding-top:18px}.yd-order-actions span{color:#68707e;font-weight:700}.yd-order-actions button{min-height:48px;border:0;border-radius:999px;background:#f7c51e;color:#17191f;padding:0 24px;font-weight:900;display:inline-flex;align-items:center;gap:8px;cursor:pointer}.yd-order-actions button:disabled{opacity:.7;cursor:wait}@media(max-width:1100px){.yd-dashboard-stats{grid-template-columns:repeat(2,1fr)}.yd-workspace{grid-template-columns:1fr;direction:rtl}.yd-platforms{grid-template-columns:repeat(5,1fr)}}@media(max-width:680px){.yd-order-hero{min-height:135px}.yd-order-hero-inner h1{font-size:29px}.yd-dashboard-stats{grid-template-columns:1fr;margin-top:-24px}.yd-platforms{grid-template-columns:repeat(4,1fr);gap:10px}.yd-form-grid,.yd-service-meta{grid-template-columns:1fr}.yd-order-card-head,.yd-order-actions{align-items:stretch;flex-direction:column}.yd-order-tabs{justify-content:flex-start}.yd-workspace,.yd-platform-band,.yd-dashboard-stats{width:min(100% - 16px,1440px)}}
+#app > .yd-order-shell {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: calc(100vh - 68px);
+    background: #f4f5f7;
+    color: #16181d;
+}
+
+.yd-order-shell {
+    font-family: "Cairo", "Tajawal", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.yd-order-hero {
+    min-height: 150px;
+    background: #17191f;
+    background-image: linear-gradient(135deg, #17191f 0%, #20242c 58%, #101216 100%);
+    display: grid;
+    place-items: center;
+    text-align: center;
+    color: #fff;
+    overflow: hidden;
+    border-bottom: 4px solid #f7c51e;
+}
+
+.yd-order-hero-inner p {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 800;
+    color: #ffe585;
+}
+
+.yd-order-hero-inner h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+.yd-dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    width: min(100% - 28px, 1440px);
+    margin: -38px auto 18px;
+    position: relative;
+    z-index: 2;
+}
+
+.yd-dashboard-stats article {
+    background: #fff;
+    border: 1px solid #e7e9ee;
+    border-radius: 8px;
+    min-height: 86px;
+    padding: 16px 18px;
+    box-shadow: 0 12px 28px rgba(23, 25, 31, .08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    overflow: hidden;
+}
+
+.yd-dashboard-stats article > div {
+    min-width: 0;
+    text-align: right;
+}
+
+.yd-dashboard-stats small {
+    display: block;
+    color: #69707d;
+    font-size: 12px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    white-space: nowrap;
+}
+
+.yd-dashboard-stats strong {
+    display: block;
+    font-size: 22px;
+    line-height: 1.15;
+    color: #101216;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.yd-stat-icon {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: #f7c51e;
+    color: #17191f;
+    font-size: 17px;
+}
+
+.yd-platform-band {
+    width: min(100% - 28px, 1440px);
+    margin: 0 auto 18px;
+    background: #fff;
+    border: 1px solid #e7e9ee;
+    border-radius: 8px;
+    padding: 18px;
+    box-shadow: 0 8px 22px rgba(23, 25, 31, .05);
+}
+
+.yd-platform-title {
+    text-align: right;
+    font-size: 18px;
+    font-weight: 900;
+    margin-bottom: 14px;
+    color: #17191f;
+}
+
+.yd-platforms {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 10px;
+}
+
+.yd-platforms button {
+    min-height: 56px;
+    border: 1px solid #dde1e8;
+    border-radius: 8px;
+    background: #fff;
+    color: #17191f;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    padding: 8px 10px;
+    text-align: right;
+    cursor: pointer;
+}
+
+.yd-platforms button > b {
+    grid-row: 1 / 3;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #f7c51e;
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    color: #17191f;
+}
+
+.yd-platforms button > span {
+    min-width: 0;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.yd-platforms button > small {
+    color: #68707e;
+    font-weight: 800;
+    font-size: 11px;
+}
+
+.yd-platforms button:hover,
+.yd-platforms button.active {
+    border-color: #f7c51e;
+    background: #fff9df;
+}
+
+.yd-platform-empty {
+    min-height: 48px;
+    display: grid;
+    place-items: center;
+    border: 1px dashed #d9dee8;
+    border-radius: 8px;
+    color: #68707e;
+    font-weight: 800;
+}
+
+.yd-workspace {
+    width: min(100% - 28px, 1440px);
+    margin: 0 auto 40px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 18px;
+    align-items: start;
+    direction: rtl;
+}
+
+.yd-order-card,
+.yd-help-panel {
+    direction: rtl;
+}
+
+.yd-order-card {
+    background: #fff;
+    border: 1px solid #e1e5ec;
+    border-radius: 8px;
+    box-shadow: 0 12px 28px rgba(23, 25, 31, .07);
+    padding: 22px;
+    min-width: 0;
+}
+
+.yd-order-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.yd-order-card h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 900;
+    color: #17191f;
+}
+
+.yd-order-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.yd-order-tabs button,
+.yd-order-tabs a {
+    border: 1px solid #dfe3ea;
+    background: #f8fafc;
+    color: #17191f;
+    border-radius: 999px;
+    padding: 9px 15px;
+    font-weight: 800;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.yd-order-tabs .active {
+    background: #f7c51e;
+    color: #17191f;
+    border-color: #f7c51e;
+}
+
+.yd-order-tabs button:disabled {
+    opacity: .62;
+}
+
+.yd-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.yd-form-grid label {
+    display: grid;
+    gap: 7px;
+    color: #17191f;
+    font-weight: 800;
+    min-width: 0;
+}
+
+.yd-form-grid span {
+    font-size: 13px;
+    color: #4f5663;
+}
+
+.yd-form-grid input,
+.yd-form-grid select,
+.yd-form-grid textarea,
+.yd-description-box {
+    width: 100%;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    background: #f8fafc;
+    min-height: 44px;
+    padding: 10px 12px;
+    color: #17191f;
+}
+
+.yd-form-grid textarea {
+    min-height: 86px;
+    resize: vertical;
+}
+
+.yd-description-box {
+    min-height: 112px;
+    white-space: pre-line;
+    line-height: 1.75;
+    font-weight: 650;
+    color: #2d3340;
+    overflow: auto;
+}
+
+.yd-form-grid input:focus,
+.yd-form-grid select:focus,
+.yd-form-grid textarea:focus {
+    outline: 0;
+    border-color: #f7c51e;
+    box-shadow: 0 0 0 3px rgba(247, 197, 30, .2);
+}
+
+.yd-wide {
+    grid-column: 1 / -1;
+}
+
+.yd-service-field select {
+    min-height: 48px;
+}
+
+.yd-service-meta {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+.yd-service-meta div {
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    background: #fffdf4;
+    padding: 12px;
+    min-width: 0;
+}
+
+.yd-service-meta small {
+    display: block;
+    color: #68707e;
+    font-weight: 800;
+    margin-bottom: 5px;
+}
+
+.yd-service-meta strong {
+    display: block;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+}
+
+.yd-help-panel {
+    background: #17191f;
+    border-radius: 8px;
+    padding: 16px;
+    color: #fff;
+    box-shadow: 0 12px 28px rgba(23, 25, 31, .12);
+    border-top: 4px solid #f7c51e;
+}
+
+.yd-help-panel h2 {
+    margin: 0 0 14px;
+    text-align: center;
+    font-size: 19px;
+    font-weight: 900;
+    color: #ffe585;
+}
+
+.yd-help-panel details {
+    background: #fff;
+    color: #17191f;
+    border-radius: 8px;
+    margin: 8px 0;
+    overflow: hidden;
+}
+
+.yd-help-panel summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 10px 14px;
+    font-weight: 900;
+}
+
+.yd-help-panel p {
+    margin: 0;
+    padding: 0 14px 12px;
+    color: #555d6a;
+    line-height: 1.8;
+}
+
+.yd-order-message {
+    display: none;
+    margin-top: 16px;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-weight: 800;
+}
+
+.yd-order-message.error {
+    display: block;
+    background: #fff0f0;
+    color: #9f1717;
+    border: 1px solid #ffc8c8;
+}
+
+.yd-order-message.success {
+    display: block;
+    background: #effaf2;
+    color: #146229;
+    border: 1px solid #bfe8c8;
+}
+
+.yd-order-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 18px;
+    border-top: 1px solid #edf0f4;
+    padding-top: 18px;
+}
+
+.yd-order-actions span {
+    color: #68707e;
+    font-weight: 700;
+}
+
+.yd-order-actions button {
+    min-height: 48px;
+    border: 0;
+    border-radius: 999px;
+    background: #f7c51e;
+    color: #17191f;
+    padding: 0 24px;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.yd-order-actions button:disabled {
+    opacity: .7;
+    cursor: wait;
+}
+
+@media (max-width: 1100px) {
+    .yd-dashboard-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .yd-workspace {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .yd-order-hero {
+        min-height: 135px;
+    }
+
+    .yd-order-hero-inner h1 {
+        font-size: 29px;
+    }
+
+    .yd-dashboard-stats {
+        grid-template-columns: 1fr;
+        margin-top: -24px;
+    }
+
+    .yd-platforms {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .yd-platforms button {
+        grid-template-columns: 30px minmax(0, 1fr);
+    }
+
+    .yd-form-grid,
+    .yd-service-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .yd-order-card-head,
+    .yd-order-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .yd-order-tabs {
+        justify-content: flex-start;
+    }
+
+    .yd-workspace,
+    .yd-platform-band,
+    .yd-dashboard-stats {
+        width: min(100% - 16px, 1440px);
+    }
+}

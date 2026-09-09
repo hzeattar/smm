@@ -46,37 +46,12 @@
 
     <section class="yd-platform-band" aria-label="اختر المنصة">
         <div class="yd-platform-title">اختر منصة السوشيال</div>
-        <div class="yd-platforms">
-            <button type="button" data-platform="instagram" title="Instagram"><i class="fab fa-instagram"></i></button>
-            <button type="button" data-platform="facebook" title="Facebook"><i class="fab fa-facebook-f"></i></button>
-            <button type="button" data-platform="youtube" title="YouTube"><i class="fab fa-youtube"></i></button>
-            <button type="button" data-platform="tiktok" title="TikTok"><i class="fab fa-tiktok"></i></button>
-            <button type="button" data-platform="telegram" title="Telegram"><i class="fab fa-telegram-plane"></i></button>
-            <button type="button" data-platform="twitter" title="Twitter"><i class="fab fa-twitter"></i></button>
-            <button type="button" data-platform="snapchat" title="Snapchat"><i class="fab fa-snapchat-ghost"></i></button>
-            <button type="button" data-platform="spotify" title="Spotify"><i class="fab fa-spotify"></i></button>
-            <button type="button" data-platform="linkedin" title="LinkedIn"><i class="fab fa-linkedin-in"></i></button>
-            <button type="button" data-platform="discord" title="Discord"><i class="fab fa-discord"></i></button>
+        <div id="yd-platforms" class="yd-platforms">
+            <button type="button" disabled>جاري تحميل المنصات</button>
         </div>
     </section>
 
     <section class="yd-workspace">
-        <aside class="yd-help-panel">
-            <h2>أسئلة مهمة</h2>
-            <details open>
-                <summary>كيف أعمل طلب جديد؟</summary>
-                <p>اختر القسم ثم الخدمة، ضع الرابط والكمية، وسيظهر السعر قبل الإرسال.</p>
-            </details>
-            <details>
-                <summary>كيف يتم حساب السعر؟</summary>
-                <p>السعر المعروض تقديري للواجهة، والحساب النهائي يتم من السيرفر فقط عند إرسال الطلب.</p>
-            </details>
-            <details>
-                <summary>ماذا لو رصيدي لا يكفي؟</summary>
-                <p>سيظهر تنبيه واضح ولن يتم إرسال الطلب للمزود.</p>
-            </details>
-        </aside>
-
         <section class="yd-order-card">
             <div class="yd-order-card-head">
                 <h2>إنشاء طلب</h2>
@@ -100,7 +75,7 @@
                         <select id="yd-category" name="category_id" required>
                             <option value="">اختر القسم</option>
                             @foreach ($categories as $category)
-                                <option value="{{ $category->id }}">{{ $category->name }}</option>
+                                <option value="{{ $category->id }}" data-name="{{ $category->name }}">{{ $category->name }}</option>
                             @endforeach
                         </select>
                     </label>
@@ -156,6 +131,22 @@
                 </div>
             </form>
         </section>
+
+        <aside class="yd-help-panel">
+            <h2>أسئلة مهمة</h2>
+            <details open>
+                <summary>كيف أعمل طلب جديد؟</summary>
+                <p>اختر المنصة ثم القسم والخدمة، ضع الرابط والكمية، وسيظهر السعر قبل الإرسال.</p>
+            </details>
+            <details>
+                <summary>كيف يتم حساب السعر؟</summary>
+                <p>السعر المعروض تقديري للواجهة، والحساب النهائي يتم من السيرفر فقط عند إرسال الطلب.</p>
+            </details>
+            <details>
+                <summary>ماذا لو رصيدي لا يكفي؟</summary>
+                <p>سيظهر تنبيه واضح ولن يتم إرسال الطلب للمزود.</p>
+            </details>
+        </aside>
     </section>
 </main>
 @endsection
@@ -166,14 +157,33 @@
     var category = document.getElementById('yd-category');
     var service = document.getElementById('yd-service');
     var search = document.getElementById('yd-service-search');
+    var platformList = document.getElementById('yd-platforms');
     var quantity = document.getElementById('yd-quantity');
     var charge = document.getElementById('yd-charge');
     var desc = document.getElementById('yd-description');
     var meta = document.getElementById('yd-service-meta');
     var form = document.getElementById('yd-order-form');
     var message = document.getElementById('yd-order-message');
+    var servicesUrlBase = "{{ url('/user/orders/services') }}";
     var services = [];
     var selected = null;
+    var activePlatform = 'all';
+    var categoryOptions = Array.prototype.slice.call(category.querySelectorAll('option')).filter(function (option) {
+        return option.value;
+    });
+    var platforms = [
+        {key: 'instagram', label: 'Instagram', short: 'IG', terms: ['instagram', 'insta', 'انست', 'إنست', 'انستجرام', 'إنستجرام']},
+        {key: 'facebook', label: 'Facebook', short: 'FB', terms: ['facebook', 'فيس', 'فيسبوك', 'fb']},
+        {key: 'youtube', label: 'YouTube', short: 'YT', terms: ['youtube', 'يوتيوب', 'yt']},
+        {key: 'tiktok', label: 'TikTok', short: 'TT', terms: ['tiktok', 'tik tok', 'تيك', 'تيك توك']},
+        {key: 'telegram', label: 'Telegram', short: 'TG', terms: ['telegram', 'تلجرام', 'تليجرام']},
+        {key: 'twitter', label: 'Twitter / X', short: 'X', terms: ['twitter', 'تويتر', 'اكس', 'إكس']},
+        {key: 'snapchat', label: 'Snapchat', short: 'SC', terms: ['snapchat', 'سناب', 'سناب شات']},
+        {key: 'spotify', label: 'Spotify', short: 'SP', terms: ['spotify', 'سبوتيفاي']},
+        {key: 'linkedin', label: 'LinkedIn', short: 'IN', terms: ['linkedin', 'لينكد', 'لينكدان']},
+        {key: 'discord', label: 'Discord', short: 'DC', terms: ['discord', 'ديسكورد']},
+        {key: 'other', label: 'أخرى', short: 'OT', terms: []}
+    ];
 
     function setMessage(text, type) {
         message.textContent = text || '';
@@ -189,6 +199,126 @@
         var holder = document.createElement('div');
         holder.innerHTML = String(value || '');
         return (holder.textContent || holder.innerText || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function normalize(value) {
+        return cleanText(value).toLowerCase();
+    }
+
+    function detectPlatform(name) {
+        var text = normalize(name);
+        for (var i = 0; i < platforms.length; i += 1) {
+            if (platforms[i].key === 'other') {
+                continue;
+            }
+            for (var j = 0; j < platforms[i].terms.length; j += 1) {
+                if (text.indexOf(platforms[i].terms[j]) !== -1) {
+                    return platforms[i].key;
+                }
+            }
+        }
+        return 'other';
+    }
+
+    function platformByKey(key) {
+        return platforms.find(function (item) { return item.key === key; }) || platforms[platforms.length - 1];
+    }
+
+    function optionPlatform(option) {
+        if (!option.dataset.platform) {
+            option.dataset.platform = detectPlatform(option.dataset.name || option.textContent);
+        }
+        return option.dataset.platform;
+    }
+
+    function filteredCategoryOptions() {
+        if (activePlatform === 'all') {
+            return categoryOptions.slice();
+        }
+        return categoryOptions.filter(function (option) {
+            return optionPlatform(option) === activePlatform;
+        });
+    }
+
+    function setActivePlatformButton() {
+        Array.prototype.slice.call(platformList.querySelectorAll('button[data-platform]')).forEach(function (button) {
+            button.classList.toggle('active', button.dataset.platform === activePlatform);
+        });
+    }
+
+    function renderPlatformFilters() {
+        var counts = {};
+        categoryOptions.forEach(function (option) {
+            var key = optionPlatform(option);
+            counts[key] = (counts[key] || 0) + 1;
+        });
+
+        platformList.innerHTML = '';
+        if (!categoryOptions.length) {
+            var empty = document.createElement('span');
+            empty.className = 'yd-platform-empty';
+            empty.textContent = 'لا توجد خدمات متاحة الآن';
+            platformList.appendChild(empty);
+            return;
+        }
+
+        var all = document.createElement('button');
+        all.type = 'button';
+        all.dataset.platform = 'all';
+        all.innerHTML = '<b>ALL</b><span>كل المنصات</span><small>' + categoryOptions.length + ' قسم</small>';
+        platformList.appendChild(all);
+
+        platforms.forEach(function (item) {
+            if (!counts[item.key]) {
+                return;
+            }
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.platform = item.key;
+            button.innerHTML = '<b>' + item.short + '</b><span>' + item.label + '</span><small>' + counts[item.key] + ' قسم</small>';
+            platformList.appendChild(button);
+        });
+
+        platformList.addEventListener('click', function (event) {
+            var button = event.target.closest('button[data-platform]');
+            if (!button) {
+                return;
+            }
+            activePlatform = button.dataset.platform || 'all';
+            setActivePlatformButton();
+            renderCategories(true);
+        });
+        setActivePlatformButton();
+    }
+
+    function renderCategories(selectFirst) {
+        var previous = category.value;
+        var options = filteredCategoryOptions();
+        category.innerHTML = '<option value="">اختر القسم</option>';
+        options.forEach(function (source) {
+            category.appendChild(source.cloneNode(true));
+        });
+
+        var hasPrevious = options.some(function (option) {
+            return String(option.value) === String(previous);
+        });
+
+        if (!selectFirst && hasPrevious) {
+            category.value = previous;
+        } else if (selectFirst && options.length) {
+            category.value = options[0].value;
+        }
+
+        if (!category.value) {
+            services = [];
+            selected = null;
+            service.disabled = true;
+            service.innerHTML = '<option value="">اختر القسم أولًا</option>';
+            updateMeta();
+            return;
+        }
+
+        loadServicesForCategory();
     }
 
     function describeService(item) {
@@ -251,7 +381,7 @@
         charge.value = money((Number(quantity.value || 0) * Number(selected.rate || 0)) / 1000);
     }
 
-    category.addEventListener('change', function () {
+    function loadServicesForCategory() {
         services = [];
         selected = null;
         service.disabled = true;
@@ -261,7 +391,7 @@
             service.innerHTML = '<option value="">اختر القسم أولًا</option>';
             return;
         }
-        fetch('{{ url('/user/orders/services') }}/' + encodeURIComponent(category.value), {headers: {'Accept': 'application/json'}})
+        fetch(servicesUrlBase + '/' + encodeURIComponent(category.value), {headers: {'Accept': 'application/json'}})
             .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
             .then(function (data) {
                 services = Array.isArray(data) ? data : [];
@@ -271,8 +401,9 @@
                 service.innerHTML = '<option value="">تعذر تحميل الخدمات</option>';
                 setMessage('تعذر تحميل خدمات هذا القسم، حاول مرة أخرى.', 'error');
             });
-    });
+    }
 
+    category.addEventListener('change', loadServicesForCategory);
     service.addEventListener('change', updateMeta);
     search.addEventListener('input', renderServices);
     quantity.addEventListener('input', updateCharge);
@@ -320,6 +451,9 @@
             button.innerHTML = '<i class="fa fa-cart-plus"></i> طلب جديد';
         });
     });
+
+    renderPlatformFilters();
+    renderCategories(false);
 })();
 </script>
 @endsection
