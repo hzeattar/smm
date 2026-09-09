@@ -3,6 +3,7 @@
 ::selection{background:#f7c51e;color:#17191f}
 *{-webkit-tap-highlight-color:transparent}
 body{min-height:100vh}
+body,button,input,select,textarea,.yd-auth-page,.yd-order-shell,#page-container{font-family:"Tajawal","Inter",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
 button,a,input,select,textarea{transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;box-shadow:var(--yd-ring)!important}
 
