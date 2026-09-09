@@ -17,10 +17,10 @@
                         <li><a class="link" href="{{ $links ? route('welcome').'#faq' : '#faq' }}">الأسئلة الشائعة</a></li>
                         <li><a class="link" href="{{ $links ? route('welcome').'#contact-us' : '#contact-us' }}">تواصل معنا</a></li>
 
-                        @if (Helper::settings('user_login') === 'on')
+                        @if ($loginEnabled ?? true)
                             <li class="login"><a href="{{ route('login') }}">تسجيل الدخول</a></li>
                         @endif
-                        @if (Helper::settings('user_registration') === 'on')
+                        @if ($registrationEnabled ?? true)
                             <li class="try"><a href="{{ route('register') }}">إنشاء حساب</a></li>
                         @endif
 
@@ -28,7 +28,7 @@
                             <li class="yd-language-item">
                                 <div class="dropdown">
                                     <button class="yd-language-toggle dropdown-toggle" type="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                        <span>{{ isset($lang) ? $lang->name : 'Language' }}</span><span aria-hidden="true">▾</span>
+                                        <span>{{ isset($lang) && $lang ? $lang->name : 'Language' }}</span><span aria-hidden="true">▾</span>
                                     </button>
                                     <div class="dropdown-menu">
                                         @foreach ($languages as $language)
