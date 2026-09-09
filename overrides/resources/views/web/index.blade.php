@@ -12,10 +12,10 @@
                     <h1>كل خدمات السوشيال ميديا في مكان واحد مع <span>البطة الصفرا</span></h1>
                     <p>اطلب المتابعين والمشاهدات والتفاعلات والخدمات الرقمية بسهولة، تابع طلباتك من لوحة واحدة، واربط مزودي الخدمات والدفع بطريقة منظمة وقابلة للتوسع.</p>
                     <div class="yd-hero-actions">
-                        @if (Helper::settings('user_registration') === 'on')
+                        @if ($registrationEnabled ?? true)
                             <a class="yd-primary-cta" href="{{ route('register') }}">ابدأ الآن</a>
                         @endif
-                        @if (Helper::settings('user_login') === 'on')
+                        @if ($loginEnabled ?? true)
                             <a class="yd-secondary-cta" href="{{ route('login') }}">عندي حساب</a>
                         @endif
                     </div>
@@ -61,7 +61,7 @@
             <div class="yd-section-heading">
                 <span class="eyebrow">الخدمات</span>
                 <h2>الخدمات الأكثر طلبًا</h2>
-                <p>المنصة جاهزة لعرض خدمات مزودي الـSMM الذين سنربطهم، ويمكن إدارة الأسعار والهامش والخدمات من لوحة الإدارة.</p>
+                <p>المنصة جاهزة لعرض خدمات مزودي الـSMM الذين تم ربطهم، ويمكن إدارة الأسعار والهامش والخدمات من لوحة الإدارة.</p>
             </div>
             <div class="yd-service-grid">
                 <article class="yd-service-card"><div class="yd-service-icon">📸</div><h3>Instagram</h3><p>متابعون، إعجابات، مشاهدات، تفاعل وخدمات إضافية حسب المزود.</p><span class="yd-card-arrow">←</span></article>
@@ -115,8 +115,8 @@
             <div class="yd-faq-list">
                 @forelse($faqs as $faq)
                     <article class="yd-faq-item">
-                        <h3>{{ Helper::getLang($faq->question) }}</h3>
-                        <div class="answer">{!! Helper::getLang($faq->answer) !!}</div>
+                        <h3>{{ $faq['question'] }}</h3>
+                        <div class="answer">{{ $faq['answer'] }}</div>
                     </article>
                 @empty
                     <article class="yd-faq-item"><h3>كيف أبدأ؟</h3><div class="answer">أنشئ حسابًا، أضف رصيدك، ثم اختر الخدمة المناسبة وأنشئ الطلب.</div></article>
@@ -131,13 +131,13 @@
                 <div>
                     <span class="yd-kicker">ابدأ في أقل من دقيقة</span>
                     <h2>جاهز تجرب البطة الصفرا؟</h2>
-                    <p>أنشئ حسابك، ادخل للوحة المستخدم، وأول ما نربط المزود هتظهر الخدمات والأسعار تلقائيًا.</p>
+                    <p>أنشئ حسابك، ادخل للوحة المستخدم، وابدأ اختيار الخدمات المتاحة.</p>
                 </div>
                 <div class="yd-launch-actions">
-                    @if (Helper::settings('user_registration') === 'on')
+                    @if ($registrationEnabled ?? true)
                         <a class="yd-primary-cta" href="{{ route('register') }}">إنشاء حساب</a>
                     @endif
-                    @if (Helper::settings('user_login') === 'on')
+                    @if ($loginEnabled ?? true)
                         <a class="yd-secondary-cta yd-secondary-dark" href="{{ route('login') }}">تسجيل الدخول</a>
                     @endif
                 </div>
