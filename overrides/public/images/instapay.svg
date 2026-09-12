@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="InstaPay Egypt">
+  <rect width="96" height="96" rx="22" fill="#fff"/>
+  <path d="M20 62h15l8-28H28l-8 28Z" fill="#6f3cc3"/>
+  <path d="M40 62h15l8-28H48l-8 28Z" fill="#ef6537"/>
+  <path d="M60 62h16l-8-28H52l8 28Z" fill="#6f3cc3"/>
+  <path d="M26 69h50" stroke="#151820" stroke-width="6" stroke-linecap="round"/>
+  <path d="M25 25h25" stroke="#ef6537" stroke-width="6" stroke-linecap="round"/>
+  <path d="M55 25h16" stroke="#6f3cc3" stroke-width="6" stroke-linecap="round"/>
+</svg>

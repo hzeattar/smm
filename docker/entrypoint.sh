@@ -130,6 +130,10 @@ if [ -f scripts/sync-smmfansfaster.php ]; then
   php scripts/sync-smmfansfaster.php || true
 fi
 
+if [ -f scripts/bootstrap-yellow-duck-payments.php ]; then
+  php scripts/bootstrap-yellow-duck-payments.php || true
+fi
+
 php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true

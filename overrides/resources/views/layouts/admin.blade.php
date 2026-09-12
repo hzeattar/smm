@@ -73,6 +73,16 @@
                 if(form) form.submit();
             });
         });
+        document.addEventListener('pointerdown', function(e){
+            if(e.button && e.button !== 0) return;
+            var pop = document.createElement('span');
+            pop.className = 'yd-duck-pop';
+            pop.textContent = '🦆';
+            pop.style.left = e.clientX + 'px';
+            pop.style.top = e.clientY + 'px';
+            document.body.appendChild(pop);
+            window.setTimeout(function(){ pop.remove(); }, 760);
+        }, {passive:true});
         if(window.jQuery && jQuery.fn.tooltip){ jQuery('body').tooltip({selector:'[data-toggle=tooltip]'}); }
     });
 })();

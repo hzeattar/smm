@@ -172,17 +172,17 @@
         return option.value;
     });
     var platforms = [
-        {key: 'instagram', label: 'Instagram', short: 'IG', terms: ['instagram', 'insta', 'انست', 'إنست', 'انستجرام', 'إنستجرام']},
-        {key: 'facebook', label: 'Facebook', short: 'FB', terms: ['facebook', 'فيس', 'فيسبوك', 'fb']},
-        {key: 'youtube', label: 'YouTube', short: 'YT', terms: ['youtube', 'يوتيوب', 'yt']},
-        {key: 'tiktok', label: 'TikTok', short: 'TT', terms: ['tiktok', 'tik tok', 'تيك', 'تيك توك']},
-        {key: 'telegram', label: 'Telegram', short: 'TG', terms: ['telegram', 'تلجرام', 'تليجرام']},
-        {key: 'twitter', label: 'Twitter / X', short: 'X', terms: ['twitter', 'تويتر', 'اكس', 'إكس']},
-        {key: 'snapchat', label: 'Snapchat', short: 'SC', terms: ['snapchat', 'سناب', 'سناب شات']},
-        {key: 'spotify', label: 'Spotify', short: 'SP', terms: ['spotify', 'سبوتيفاي']},
-        {key: 'linkedin', label: 'LinkedIn', short: 'IN', terms: ['linkedin', 'لينكد', 'لينكدان']},
-        {key: 'discord', label: 'Discord', short: 'DC', terms: ['discord', 'ديسكورد']},
-        {key: 'other', label: 'أخرى', short: 'OT', terms: []}
+        {key: 'instagram', label: 'Instagram', terms: ['instagram', 'insta', 'انست', 'إنست', 'انستجرام', 'إنستجرام']},
+        {key: 'facebook', label: 'Facebook', terms: ['facebook', 'فيس', 'فيسبوك', 'fb']},
+        {key: 'youtube', label: 'YouTube', terms: ['youtube', 'يوتيوب', 'yt']},
+        {key: 'tiktok', label: 'TikTok', terms: ['tiktok', 'tik tok', 'تيك', 'تيك توك']},
+        {key: 'telegram', label: 'Telegram', terms: ['telegram', 'تلجرام', 'تليجرام']},
+        {key: 'twitter', label: 'Twitter / X', terms: ['twitter', 'تويتر', 'اكس', 'إكس']},
+        {key: 'snapchat', label: 'Snapchat', terms: ['snapchat', 'سناب', 'سناب شات']},
+        {key: 'spotify', label: 'Spotify', terms: ['spotify', 'سبوتيفاي']},
+        {key: 'linkedin', label: 'LinkedIn', terms: ['linkedin', 'لينكد', 'لينكدان']},
+        {key: 'discord', label: 'Discord', terms: ['discord', 'ديسكورد']},
+        {key: 'other', label: 'أخرى', terms: []}
     ];
 
     function setMessage(text, type) {
@@ -222,6 +222,66 @@
 
     function platformByKey(key) {
         return platforms.find(function (item) { return item.key === key; }) || platforms[platforms.length - 1];
+    }
+
+    function platformLogo(key) {
+        var labels = {
+            all: 'ALL',
+            instagram: '◎',
+            facebook: 'f',
+            youtube: '▶',
+            tiktok: '♪',
+            telegram: '✈',
+            twitter: '𝕏',
+            snapchat: '●',
+            spotify: '♬',
+            linkedin: 'in',
+            discord: '⌁',
+            other: '…'
+        };
+        return '<b class="yd-platform-logo yd-platform-logo-' + key + '"><span>' + (labels[key] || labels.other) + '</span></b>';
+    }
+
+    function translateServiceName(name) {
+        var text = cleanText(name);
+        var replacements = [
+            [/instagram/ig, 'إنستجرام'],
+            [/facebook/ig, 'فيسبوك'],
+            [/youtube/ig, 'يوتيوب'],
+            [/tiktok|tik tok/ig, 'تيك توك'],
+            [/telegram/ig, 'تليجرام'],
+            [/twitter| x /ig, 'إكس'],
+            [/snapchat/ig, 'سناب شات'],
+            [/spotify/ig, 'سبوتيفاي'],
+            [/linkedin/ig, 'لينكدإن'],
+            [/discord/ig, 'ديسكورد'],
+            [/followers?/ig, 'متابعين'],
+            [/likes?/ig, 'لايكات'],
+            [/views?/ig, 'مشاهدات'],
+            [/subscribers?/ig, 'مشتركين'],
+            [/members?/ig, 'أعضاء'],
+            [/comments?/ig, 'تعليقات'],
+            [/shares?/ig, 'مشاركات'],
+            [/saves?/ig, 'حفظ'],
+            [/watch time/ig, 'وقت مشاهدة'],
+            [/story|stories/ig, 'ستوري'],
+            [/reels?/ig, 'ريلز'],
+            [/shorts?/ig, 'شورتس'],
+            [/live stream/ig, 'بث مباشر'],
+            [/channel/ig, 'قناة'],
+            [/page/ig, 'صفحة'],
+            [/group/ig, 'جروب'],
+            [/account/ig, 'حساب'],
+            [/real|active|quality/ig, 'حقيقي'],
+            [/cheap|low cost/ig, 'اقتصادي'],
+            [/fast|instant/ig, 'سريع'],
+            [/arab|arabic/ig, 'عربي'],
+            [/egypt|egyptian/ig, 'مصري']
+        ];
+        replacements.forEach(function (pair) {
+            text = text.replace(pair[0], pair[1]);
+        });
+        return text.replace(/\s+/g, ' ').trim();
     }
 
     function optionPlatform(option) {
@@ -265,7 +325,7 @@
         var all = document.createElement('button');
         all.type = 'button';
         all.dataset.platform = 'all';
-        all.innerHTML = '<b>ALL</b><span>كل المنصات</span><small>' + categoryOptions.length + ' قسم</small>';
+        all.innerHTML = platformLogo('all') + '<span>كل المنصات</span><small>' + categoryOptions.length + ' قسم</small>';
         platformList.appendChild(all);
 
         platforms.forEach(function (item) {
@@ -275,7 +335,7 @@
             var button = document.createElement('button');
             button.type = 'button';
             button.dataset.platform = item.key;
-            button.innerHTML = '<b>' + item.short + '</b><span>' + item.label + '</span><small>' + counts[item.key] + ' قسم</small>';
+            button.innerHTML = platformLogo(item.key) + '<span>' + item.label + '</span><small>' + counts[item.key] + ' قسم</small>';
             platformList.appendChild(button);
         });
 
@@ -366,7 +426,9 @@
         filtered.forEach(function (item) {
             var option = document.createElement('option');
             option.value = item.id;
-            option.textContent = item.name + ' - $' + Number(item.rate || 0).toFixed(4);
+            var translated = translateServiceName(item.name || '');
+            option.textContent = translated + ' - $' + Number(item.rate || 0).toFixed(4);
+            option.title = item.name || translated;
             service.appendChild(option);
         });
         service.disabled = filtered.length === 0;

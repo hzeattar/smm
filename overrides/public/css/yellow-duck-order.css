@@ -147,6 +147,65 @@
     color: #17191f;
 }
 
+.yd-platforms button > b.yd-platform-logo {
+    color: #fff;
+    font-weight: 950;
+    font-family: "Inter", "Tajawal", system-ui, sans-serif;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+}
+
+.yd-platform-logo span {
+    line-height: 1;
+}
+
+.yd-platform-logo-all,
+.yd-platform-logo-other {
+    background: #f7c51e !important;
+    color: #17191f !important;
+}
+
+.yd-platform-logo-instagram {
+    background: radial-gradient(circle at 30% 110%, #feda75 0 28%, #fa7e1e 38%, #d62976 56%, #962fbf 76%, #4f5bd5 100%) !important;
+}
+
+.yd-platform-logo-facebook {
+    background: #1877f2 !important;
+    font-size: 21px !important;
+}
+
+.yd-platform-logo-youtube {
+    background: #ff0000 !important;
+}
+
+.yd-platform-logo-tiktok {
+    background: #111 !important;
+}
+
+.yd-platform-logo-telegram {
+    background: #229ed9 !important;
+}
+
+.yd-platform-logo-twitter {
+    background: #111 !important;
+}
+
+.yd-platform-logo-snapchat {
+    background: #fffc00 !important;
+    color: #17191f !important;
+}
+
+.yd-platform-logo-spotify {
+    background: #1db954 !important;
+}
+
+.yd-platform-logo-linkedin {
+    background: #0a66c2 !important;
+}
+
+.yd-platform-logo-discord {
+    background: #5865f2 !important;
+}
+
 .yd-platforms button > span {
     min-width: 0;
     font-weight: 900;
