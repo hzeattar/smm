@@ -64,9 +64,7 @@ class PaymentController extends Controller
         $validator = Validator::make($request->all(), [
             'method_id' => 'required|integer|exists:payment_methods,id',
             'amount' => 'required|numeric|min:1',
-            'sender_phone' => 'nullable|string|max:80',
-            'sender_name' => 'nullable|string|max:120',
-            'reference' => 'nullable|string|max:160',
+            'sender_phone' => 'required|string|max:80',
         ]);
 
         if ($validator->fails()) {
@@ -108,8 +106,6 @@ class PaymentController extends Controller
                 'Exchange rate: EGP ' . number_format($rate, 2, '.', '') . ' = USD 1',
                 'USD credit: ' . number_format($credit, 4, '.', ''),
                 'Sender phone: ' . (string) $request->input('sender_phone'),
-                'Sender name: ' . (string) $request->input('sender_name'),
-                'Reference: ' . (string) $request->input('reference'),
             ])));
             $transaction->save();
         });

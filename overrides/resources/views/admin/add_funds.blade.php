@@ -105,21 +105,13 @@
                             @csrf
                             <input type="hidden" name="method_id" value="{{ $method->id }}">
                             <label>
-                                <span>رقم الهاتف أو الحساب الذي حوّلت منه</span>
-                                <input name="sender_phone" value="{{ old('sender_phone') }}" placeholder="مثال: 01000000000">
-                            </label>
-                            <label>
-                                <span>اسم صاحب التحويل</span>
-                                <input name="sender_name" value="{{ old('sender_name') }}" placeholder="اسمك كما يظهر في التحويل">
+                                <span>رقم الهاتف الذي تم التحويل منه</span>
+                                <input name="sender_phone" value="{{ old('sender_phone') }}" placeholder="مثال: 01000000000" required>
                             </label>
                             <label>
                                 <span>المبلغ بالجنيه المصري</span>
                                 <input class="yd-egp-amount" name="amount" type="number" step="0.01" min="{{ $method->min }}" max="{{ $method->max }}" value="{{ old('amount') }}" required>
                                 <small class="yd-credit-preview" data-rate="{{ $exchangeRate }}">سيُضاف إلى رصيدك $0.0000 بعد الاعتماد</small>
-                            </label>
-                            <label>
-                                <span>رقم العملية أو ملاحظة</span>
-                                <input name="reference" value="{{ old('reference') }}" placeholder="اختياري لكنه يساعد في سرعة المراجعة">
                             </label>
                             <button type="submit">
                                 <i class="fa fa-paper-plane"></i>
