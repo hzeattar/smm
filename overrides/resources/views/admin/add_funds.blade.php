@@ -6,13 +6,14 @@
         $methods = $paymentMethods instanceof \Illuminate\Support\Collection ? $paymentMethods : collect($paymentMethods);
         $selected = $methods->firstWhere('name', 'Vodafone Cash') ?: $methods->first();
         $vodafoneNumber = '01205323440';
+        $exchangeRate = \App\Support\YellowDuckMoney::exchangeRate();
     @endphp
 
     <section class="yd-funds-hero">
         <div>
             <span>إضافة رصيد</span>
             <h1>حوّل بأمان وسيتم مراجعة الإيداع من الأدمن</h1>
-            <p>اختر طريقة الدفع، نفذ التحويل، ثم اكتب بيانات العملية. الرصيد يضاف بعد الاعتماد من لوحة الإدارة.</p>
+            <p>كل {{ number_format($exchangeRate, 0) }} جنيه مصري يتم اعتمادها تضيف 1 دولار إلى رصيد حسابك. الرصيد يضاف بعد اعتماد الأدمن.</p>
         </div>
         <a href="{{ route('user.transactions.index') }}">سجل المدفوعات</a>
     </section>
@@ -41,7 +42,7 @@
                     <button type="button" class="{{ $isActive ? 'active' : '' }}" data-method="{{ $method->id }}">
                         <img src="{{ asset('images/' . $method->image) }}" alt="{{ $method->name }}">
                         <span>{{ $method->name }}</span>
-                        <small>من ${{ number_format((float) $method->min, 0) }} إلى ${{ number_format((float) $method->max, 0) }}</small>
+                        <small>من {{ number_format((float) $method->min, 0) }} إلى {{ number_format((float) $method->max, 0) }} ج.م</small>
                     </button>
                 @endforeach
             </aside>
@@ -71,7 +72,7 @@
                                     <small>رقم فودافون كاش</small>
                                     <strong>{{ $vodafoneNumber }}</strong>
                                 </div>
-                                <p>حوّل المبلغ على الرقم الموضح، ثم اكتب رقم الهاتف الذي تم التحويل منه والمبلغ بالضبط.</p>
+                                <p>حوّل المبلغ على الرقم الموضح، ثم اكتب رقم الهاتف الذي تم التحويل منه والمبلغ بالجنيه بالضبط.</p>
                             @elseif($isInstapay)
                                 <div class="yd-qr-box">
                                     @if($showImageQr)
@@ -93,9 +94,10 @@
                             @endif
 
                             <ul>
-                                <li>الحد الأدنى: ${{ number_format((float) $method->min, 2) }}</li>
-                                <li>الحد الأقصى: ${{ number_format((float) $method->max, 2) }}</li>
+                                <li>الحد الأدنى: {{ number_format((float) $method->min, 0) }} ج.م</li>
+                                <li>الحد الأقصى: {{ number_format((float) $method->max, 0) }} ج.م</li>
                                 <li>رسوم الطريقة: {{ number_format((float) $method->fee, 2) }}%</li>
+                                <li>سعر التحويل: 1 دولار = {{ number_format($exchangeRate, 0) }} ج.م</li>
                             </ul>
                         </div>
 
@@ -111,8 +113,9 @@
                                 <input name="sender_name" value="{{ old('sender_name') }}" placeholder="اسمك كما يظهر في التحويل">
                             </label>
                             <label>
-                                <span>المبلغ بالدولار</span>
-                                <input name="amount" type="number" step="0.01" min="{{ $method->min }}" max="{{ $method->max }}" value="{{ old('amount') }}" required>
+                                <span>المبلغ بالجنيه المصري</span>
+                                <input class="yd-egp-amount" name="amount" type="number" step="0.01" min="{{ $method->min }}" max="{{ $method->max }}" value="{{ old('amount') }}" required>
+                                <small class="yd-credit-preview" data-rate="{{ $exchangeRate }}">سيُضاف إلى رصيدك $0.0000 بعد الاعتماد</small>
                             </label>
                             <label>
                                 <span>رقم العملية أو ملاحظة</span>
@@ -154,6 +157,17 @@
                 panel.classList.toggle('active', panel.getAttribute('data-panel') === id);
             });
         });
+    });
+
+    document.querySelectorAll('.yd-egp-amount').forEach(function (input) {
+        var preview = input.parentElement.querySelector('.yd-credit-preview');
+        var updatePreview = function () {
+            var rate = Number(preview.dataset.rate || 55);
+            var amount = Number(input.value || 0);
+            preview.textContent = 'سيُضاف إلى رصيدك $' + (amount / rate).toFixed(4) + ' بعد الاعتماد';
+        };
+        input.addEventListener('input', updatePreview);
+        updatePreview();
     });
 })();
 </script>

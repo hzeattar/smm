@@ -5,6 +5,7 @@
 @endsection
 
 @section('content')
+@php($exchangeRate = \App\Support\YellowDuckMoney::exchangeRate())
 <main id="main-container" class="yd-order-shell" dir="rtl">
     <section class="yd-order-hero">
         <div class="yd-order-hero-inner">
@@ -18,7 +19,8 @@
             <span class="yd-stat-icon"><i class="fa fa-wallet"></i></span>
             <div>
                 <small>رصيدك الحالي</small>
-                <strong>${{ number_format((float) $balance, 4) }}</strong>
+                <strong>{{ number_format((float) $balance * $exchangeRate, 2) }} ج.م</strong>
+                <em>رصيد الحساب: ${{ number_format((float) $balance, 4) }}</em>
             </div>
         </article>
         <article>
@@ -32,7 +34,8 @@
             <span class="yd-stat-icon"><i class="fa fa-dollar-sign"></i></span>
             <div>
                 <small>إجمالي الصرف</small>
-                <strong>${{ number_format((float) $total_spent, 4) }}</strong>
+                <strong>{{ number_format((float) $total_spent * $exchangeRate, 2) }} ج.م</strong>
+                <em>قيمة الخدمات: ${{ number_format((float) $total_spent, 4) }}</em>
             </div>
         </article>
         <article>
@@ -165,6 +168,7 @@
     var form = document.getElementById('yd-order-form');
     var message = document.getElementById('yd-order-message');
     var servicesUrlBase = "{{ url('/user/orders/services') }}";
+    var exchangeRate = {{ json_encode($exchangeRate) }};
     var services = [];
     var selected = null;
     var activePlatform = 'all';
@@ -192,7 +196,7 @@
 
     function money(value) {
         var n = Number(value || 0);
-        return '$' + n.toFixed(4);
+        return (n * exchangeRate).toFixed(2) + ' ج.م ($' + n.toFixed(4) + ')';
     }
 
     function cleanText(value) {
@@ -225,21 +229,21 @@
     }
 
     function platformLogo(key) {
-        var labels = {
-            all: 'ALL',
-            instagram: '◎',
-            facebook: 'f',
-            youtube: '▶',
-            tiktok: '♪',
-            telegram: '✈',
-            twitter: '𝕏',
-            snapchat: '●',
-            spotify: '♬',
-            linkedin: 'in',
-            discord: '⌁',
-            other: '…'
+        var icons = {
+            all: 'fa fa-th-large',
+            instagram: 'fab fa-instagram',
+            facebook: 'fab fa-facebook-f',
+            youtube: 'fab fa-youtube',
+            tiktok: 'fab fa-tiktok',
+            telegram: 'fab fa-telegram-plane',
+            twitter: 'fab fa-twitter',
+            snapchat: 'fab fa-snapchat-ghost',
+            spotify: 'fab fa-spotify',
+            linkedin: 'fab fa-linkedin-in',
+            discord: 'fab fa-discord',
+            other: 'fa fa-ellipsis-h'
         };
-        return '<b class="yd-platform-logo yd-platform-logo-' + key + '"><span>' + (labels[key] || labels.other) + '</span></b>';
+        return '<b class="yd-platform-logo yd-platform-logo-' + key + '"><i class="' + (icons[key] || icons.other) + '" aria-hidden="true"></i></b>';
     }
 
     function translateServiceName(name) {
@@ -427,7 +431,7 @@
             var option = document.createElement('option');
             option.value = item.id;
             var translated = translateServiceName(item.name || '');
-            option.textContent = translated + ' - $' + Number(item.rate || 0).toFixed(4);
+            option.textContent = translated + ' - ' + money(item.rate);
             option.title = item.name || translated;
             service.appendChild(option);
         });

@@ -1,6 +1,7 @@
 @extends('layouts.admin')
 
 @section('content')
+@php($exchangeRate = \App\Support\YellowDuckMoney::exchangeRate())
 <main id="main-container" class="yd-admin-page yd-admin-dashboard" dir="rtl">
     <section class="yd-admin-hero">
         <div>
@@ -18,7 +19,8 @@
         <article>
             <i class="fas fa-money-bill-wave-alt"></i>
             <span>إجمالي الربح</span>
-            <strong>${{ number_format((float) $total_earnings, 4) }}</strong>
+            <strong>{{ number_format((float) $total_earnings * $exchangeRate, 2) }} ج.م</strong>
+            <em>صافي الربح: ${{ number_format((float) $total_earnings, 4) }}</em>
         </article>
         <article>
             <i class="far fa-user"></i>

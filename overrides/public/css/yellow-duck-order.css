@@ -83,6 +83,15 @@
     overflow-wrap: anywhere;
 }
 
+.yd-dashboard-stats em {
+    display: block;
+    margin-top: 5px;
+    color: #68707e;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 800;
+}
+
 .yd-stat-icon {
     flex: 0 0 40px;
     width: 40px;
@@ -154,9 +163,7 @@
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
 }
 
-.yd-platform-logo span {
-    line-height: 1;
-}
+.yd-platform-logo i { font-size: 18px; line-height: 1; }
 
 .yd-platform-logo-all,
 .yd-platform-logo-other {
@@ -170,7 +177,6 @@
 
 .yd-platform-logo-facebook {
     background: #1877f2 !important;
-    font-size: 21px !important;
 }
 
 .yd-platform-logo-youtube {

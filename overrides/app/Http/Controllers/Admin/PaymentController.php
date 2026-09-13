@@ -8,6 +8,7 @@ use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use App\Support\YellowDuckMoney;
 use PayPal\Api\Amount;
 use PayPal\Api\Item;
 use PayPal\Api\ItemList;
@@ -51,7 +52,10 @@ class PaymentController extends Controller
             }
         }
 
-        $paymentMethods = PaymentMethod::where('status', 'active')->orderBy('id', 'desc')->get();
+        $paymentMethods = PaymentMethod::where('status', 'active')
+            ->orderBy('id', 'desc')
+            ->get()
+            ->filter(fn (PaymentMethod $method) => $this->isManualPaymentMethod($method));
         return view('admin.add_funds', compact('paymentMethods'));
     }
 
@@ -70,7 +74,11 @@ class PaymentController extends Controller
         }
 
         $method = PaymentMethod::where('id', $request->input('method_id'))->where('status', 'active')->firstOrFail();
-        $amount = round((float) $request->input('amount'), 4);
+        if (!$this->isManualPaymentMethod($method)) {
+            abort(422, 'هذه الطريقة لا تدعم الإيداع اليدوي.');
+        }
+
+        $amount = round((float) $request->input('amount'), 2);
         $min = (float) $method->min;
         $max = (float) $method->max;
 
@@ -80,8 +88,10 @@ class PaymentController extends Controller
                 ->withInput();
         }
 
-        $fee = round($amount * ((float) $method->fee / 100), 4);
-        Transaction::withoutEvents(function () use ($method, $amount, $fee, $request) {
+        $fee = round($amount * ((float) $method->fee / 100), 2);
+        $rate = YellowDuckMoney::exchangeRate();
+        $credit = max(0, round(($amount - $fee) / $rate, 4));
+        Transaction::withoutEvents(function () use ($method, $amount, $fee, $credit, $rate, $request) {
             $transaction = new Transaction();
             $transaction->method_id = $method->id;
             $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id();
@@ -92,7 +102,11 @@ class PaymentController extends Controller
             $transaction->take_fee = $fee;
             $transaction->status = 'refund';
             $transaction->notes = trim(implode("\n", array_filter([
-                'Manual deposit pending admin approval.',
+                'Yellow Duck manual deposit - pending admin approval.',
+                'Deposit currency: EGP',
+                'Deposit amount (EGP): ' . number_format($amount, 2, '.', ''),
+                'Exchange rate: EGP ' . number_format($rate, 2, '.', '') . ' = USD 1',
+                'USD credit: ' . number_format($credit, 4, '.', ''),
                 'Sender phone: ' . (string) $request->input('sender_phone'),
                 'Sender name: ' . (string) $request->input('sender_name'),
                 'Reference: ' . (string) $request->input('reference'),
@@ -109,22 +123,28 @@ class PaymentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'stripe_token' => 'required',
-            'min' => 'required|numeric',
-            'max' => 'required|numeric',
-            'method_id' => 'required',
+            'method_id' => 'required|integer',
             'amount' => 'required|numeric',
-            'amount_total' => 'required|numeric',
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->messages(), 400);
         }
 
+        $paymentMethod = PaymentMethod::where('id', $request->input('method_id'))->where('status', 'active')->firstOrFail();
+        if (stripos((string) $paymentMethod->name, 'stripe') === false) {
+            abort(422, 'طريقة الدفع غير صحيحة.');
+        }
+
+        $creditUsd = round((float) $request->input('amount'), 2);
+        if ($creditUsd < (float) $paymentMethod->min || ((float) $paymentMethod->max > 0 && $creditUsd > (float) $paymentMethod->max)) {
+            return response()->json(['message' => 'المبلغ خارج الحدود المسموحة.'], 422);
+        }
+
         $customer = Auth::user();
         $stripe_token = $request->input('stripe_token');
-        $amount = (float) $request->input('amount') * 100;
-        $amount_total = (float) $request->input('amount_total') * 100;
-        $paymentMethod = PaymentMethod::where('id', $request->input('method_id'))->firstOrFail();
+        $amount = $creditUsd * 100;
+        $amount_total = round($creditUsd * (1 + ((float) $paymentMethod->fee / 100)), 2) * 100;
         $paymentMethod->makeVisible('private_key');
 
         if (!$customer->stripe_token) {
@@ -155,13 +175,15 @@ class PaymentController extends Controller
             $transaction->transaction_id = $result->balance_transaction;
             $transaction->user_id = Auth::id();
             $transaction->fee = $transactions_details->fee / 100;
-            $transaction->amount = $amount_total / 100;
+            $transaction->amount = $creditUsd;
             $transaction->profit = $transaction->amount - $transaction->fee;
-            $transaction->take_fee = ($amount / 100) * $paymentMethod->fee / 100;
+            $transaction->take_fee = 0;
             $transaction->status = $result->paid ? 'paid' : 'refund';
             $transaction->save();
 
-            $this->increaseBalance($amount / 100);
+            if ($result->paid) {
+                $this->increaseBalance($creditUsd);
+            }
 
             return response()->json(['result' => $result, 'transactions_details' => $transactions_details], 200);
         }
@@ -172,22 +194,24 @@ class PaymentController extends Controller
     public function payWithPaypal($request)
     {
         $validator = Validator::make($request->all(), [
-            'min' => 'required|numeric',
-            'max' => 'required|numeric',
             'amount' => 'required|numeric',
-            'amount_total' => 'required|numeric',
-            'method_id' => 'required|numeric',
+            'method_id' => 'required|integer',
         ]);
-
-        $paymentMethod = PaymentMethod::where('id', $request->input('method_id'))->firstOrFail();
-        session()->put('payment_method', $paymentMethod);
 
         if ($validator->fails()) {
             return response()->json($validator->messages(), 400);
         }
 
-        $amountToBePaid = $request->input('amount_total');
-        $amountWithoutFee = $request->input('amount');
+        $paymentMethod = PaymentMethod::where('id', $request->input('method_id'))->where('status', 'active')->firstOrFail();
+        if (stripos((string) $paymentMethod->name, 'paypal') === false) {
+            abort(422, 'طريقة الدفع غير صحيحة.');
+        }
+        $amountWithoutFee = round((float) $request->input('amount'), 2);
+        if ($amountWithoutFee < (float) $paymentMethod->min || ((float) $paymentMethod->max > 0 && $amountWithoutFee > (float) $paymentMethod->max)) {
+            return response()->json(['message' => 'المبلغ خارج الحدود المسموحة.'], 422);
+        }
+        $amountToBePaid = round($amountWithoutFee * (1 + ((float) $paymentMethod->fee / 100)), 2);
+        session()->put('payment_method', $paymentMethod);
         $payer = new Payer();
         $payer->setPaymentMethod('paypal');
 
@@ -292,8 +316,8 @@ class PaymentController extends Controller
         $defaults = [
             [
                 'name' => 'Vodafone Cash',
-                'min' => 10,
-                'max' => 100000,
+                'min' => 55,
+                'max' => 550000,
                 'fee' => 0,
                 'environment' => 'production',
                 'api_key' => null,
@@ -303,8 +327,8 @@ class PaymentController extends Controller
             ],
             [
                 'name' => 'InstaPay Egypt',
-                'min' => 10,
-                'max' => 100000,
+                'min' => 55,
+                'max' => 550000,
                 'fee' => 0,
                 'environment' => 'production',
                 'api_key' => null,
@@ -323,5 +347,11 @@ class PaymentController extends Controller
                 PaymentMethod::insert($data);
             }
         }
+    }
+
+    private function isManualPaymentMethod(PaymentMethod $method): bool
+    {
+        $name = strtolower((string) $method->name);
+        return str_contains($name, 'vodafone') || str_contains($name, 'instapay') || str_contains($name, 'insta pay');
     }
 }

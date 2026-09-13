@@ -46,7 +46,7 @@ chown -R www-data:www-data storage bootstrap/cache
 # Materialize the runtime environment so both CLI PHP and Apache/mod_php see
 # the same DB/app configuration. Secrets are not printed to stdout.
 php -r '
-$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION"];
+$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE"];
 foreach($keys as $k){
   $v=getenv($k);
   if($v===false) continue;

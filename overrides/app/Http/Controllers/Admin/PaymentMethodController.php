@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentMethod;
+use App\Models\Setting;
+use App\Support\YellowDuckMoney;
 use App\Traits\MainTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +39,15 @@ class PaymentMethodController extends Controller
 
     public function store(Request $request)
     {
+        if ($request->has('exchange_rate') && !$request->filled('name')) {
+            $data = $request->validate(['exchange_rate' => 'required|numeric|min:1|max:1000']);
+            Setting::updateOrCreate(
+                ['name' => YellowDuckMoney::RATE_SETTING],
+                ['value' => number_format((float) $data['exchange_rate'], 2, '.', ''), 'type' => 'general']
+            );
+            return response()->json(['exchange_rate' => YellowDuckMoney::exchangeRate()], 200);
+        }
+
         $data = $this->validatedPayload($request);
         $paymentMethod = PaymentMethod::create($data);
         return response()->json($paymentMethod, 200);

@@ -1,6 +1,7 @@
 @extends('layouts.admin')
 
 @section('content')
+@php($exchangeRate = \App\Support\YellowDuckMoney::exchangeRate())
 <main id="main-container" class="yd-admin-page yd-payment-admin" dir="rtl">
     <section class="yd-admin-hero">
         <div>
@@ -15,6 +16,22 @@
     </section>
 
     <div class="paymentMethod-area my-4">
+        <section class="yd-exchange-card" aria-label="سعر تحويل الرصيد">
+            <div>
+                <span>سعر تحويل الإيداع اليدوي</span>
+                <strong>1 دولار رصيد = <b id="yd-rate-output">{{ number_format($exchangeRate, 2) }}</b> جنيه مصري</strong>
+                <p>ينطبق على فودافون كاش وإنستا باي فقط، ويُستخدم عند اعتماد الإيداع.</p>
+            </div>
+            <form id="yd-exchange-rate-form" action="{{ route('admin.payment-methods.store') }}" method="post">
+                @csrf
+                <label for="yd-exchange-rate">سعر الدولار بالجنيه</label>
+                <div>
+                    <input id="yd-exchange-rate" name="exchange_rate" type="number" min="1" max="1000" step="0.01" value="{{ number_format($exchangeRate, 2, '.', '') }}" required>
+                    <button type="submit" class="btn btn-primary">حفظ السعر</button>
+                </div>
+                <small id="yd-exchange-rate-message" role="status"></small>
+            </form>
+        </section>
         <div class="block-header bg-white mb-4 yd-admin-filter">
             <div class="input-group">
                 <input v-model="search" type="text" class="form-control form-control-alt" placeholder="بحث في طرق الدفع">
@@ -76,4 +93,27 @@
 
 @section('scripts')
 <script src="{{ asset('js/pages/payment_method.js') }}"></script>
+<script>
+(function () {
+    var form = document.getElementById('yd-exchange-rate-form');
+    if (!form) return;
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var message = document.getElementById('yd-exchange-rate-message');
+        var button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        message.textContent = 'جاري الحفظ...';
+        axios.post(form.action, new FormData(form)).then(function (response) {
+            var rate = Number(response.data.exchange_rate || 0).toFixed(2);
+            document.getElementById('yd-rate-output').textContent = rate;
+            form.querySelector('input[name="exchange_rate"]').value = rate;
+            message.textContent = 'تم حفظ سعر التحويل.';
+        }).catch(function () {
+            message.textContent = 'تعذر حفظ السعر. راجع القيمة ثم حاول مرة أخرى.';
+        }).finally(function () {
+            button.disabled = false;
+        });
+    });
+})();
+</script>
 @endsection

@@ -15,11 +15,22 @@ if (!Schema::hasTable('payment_methods')) {
 }
 
 $now = date('Y-m-d H:i:s');
+$rate = 55;
+
+if (Schema::hasTable('settings') && !DB::table('settings')->where('name', 'yellow_duck_usd_egp_rate')->exists()) {
+    DB::table('settings')->insert([
+        'name' => 'yellow_duck_usd_egp_rate',
+        'value' => (string) $rate,
+        'type' => 'general',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+}
 $defaults = [
     [
         'name' => 'Vodafone Cash',
-        'min' => 10,
-        'max' => 100000,
+        'min' => 55,
+        'max' => 550000,
         'status' => 'active',
         'fee' => 0,
         'environment' => 'production',
@@ -30,8 +41,8 @@ $defaults = [
     ],
     [
         'name' => 'InstaPay Egypt',
-        'min' => 10,
-        'max' => 100000,
+        'min' => 55,
+        'max' => 550000,
         'status' => 'active',
         'fee' => 0,
         'environment' => 'production',
@@ -44,15 +55,21 @@ $defaults = [
 
 $created = 0;
 foreach ($defaults as $method) {
-    $exists = DB::table('payment_methods')->where('name', $method['name'])->exists();
-    if ($exists) {
-        continue;
+    $existing = DB::table('payment_methods')->where('name', $method['name'])->first();
+    if (!$existing) {
+        $method['created_at'] = $now;
+        $method['updated_at'] = $now;
+        DB::table('payment_methods')->insert($method);
+        $created++;
+    } elseif ((int) $existing->min === 10 && (int) $existing->max === 100000) {
+        // Upgrade only the defaults this project created; never overwrite an admin's own limits.
+        DB::table('payment_methods')->where('id', $existing->id)->update([
+            'min' => $method['min'],
+            'max' => $method['max'],
+            'image' => $method['image'],
+            'updated_at' => $now,
+        ]);
     }
-
-    $method['created_at'] = $now;
-    $method['updated_at'] = $now;
-    DB::table('payment_methods')->insert($method);
-    $created++;
 }
 
 fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}\n");

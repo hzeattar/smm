@@ -39,13 +39,13 @@
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="form-group">
-                                    <label for="min">الحد الأدنى بالدولار</label>
+                                    <label for="min">الحد الأدنى بالجنيه المصري</label>
                                     <input v-model="postdata.min" type="number" min="0" class="form-control" id="min">
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="form-group">
-                                    <label for="max">الحد الأقصى بالدولار</label>
+                                    <label for="max">الحد الأقصى بالجنيه المصري</label>
                                     <input v-model="postdata.max" type="number" min="0" class="form-control" id="max">
                                 </div>
                             </div>
