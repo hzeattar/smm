@@ -81,22 +81,24 @@ class PaymentController extends Controller
         }
 
         $fee = round($amount * ((float) $method->fee / 100), 4);
-        $transaction = new Transaction();
-        $transaction->method_id = $method->id;
-        $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id();
-        $transaction->user_id = Auth::id();
-        $transaction->amount = $amount;
-        $transaction->fee = 0;
-        $transaction->profit = 0;
-        $transaction->take_fee = $fee;
-        $transaction->status = 'refund';
-        $transaction->notes = trim(implode("\n", array_filter([
-            'Manual deposit pending admin approval.',
-            'Sender phone: ' . (string) $request->input('sender_phone'),
-            'Sender name: ' . (string) $request->input('sender_name'),
-            'Reference: ' . (string) $request->input('reference'),
-        ])));
-        $transaction->save();
+        Transaction::withoutEvents(function () use ($method, $amount, $fee, $request) {
+            $transaction = new Transaction();
+            $transaction->method_id = $method->id;
+            $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id();
+            $transaction->user_id = Auth::id();
+            $transaction->amount = $amount;
+            $transaction->fee = 0;
+            $transaction->profit = 0;
+            $transaction->take_fee = $fee;
+            $transaction->status = 'refund';
+            $transaction->notes = trim(implode("\n", array_filter([
+                'Manual deposit pending admin approval.',
+                'Sender phone: ' . (string) $request->input('sender_phone'),
+                'Sender name: ' . (string) $request->input('sender_name'),
+                'Reference: ' . (string) $request->input('reference'),
+            ])));
+            $transaction->save();
+        });
 
         return redirect()
             ->route('user.transactions.index')
