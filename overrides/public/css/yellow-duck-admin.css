@@ -65,6 +65,44 @@ body { margin: 0; background: var(--yd-bg); color: var(--yd-ink); font-family: "
 .yd-sidebar-brand strong { display: block; }
 .yd-sidebar-brand small { display: block; font-size: 10px; color: #605000; }
 
+.yd-profile-page { width: min(100% - 32px, 1120px); margin-inline: auto !important; padding-bottom: 48px; }
+.yd-profile-heading { min-height: 156px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px; border-radius: 8px; background: #17191f; border-bottom: 4px solid var(--yd-yellow); color: #fff; box-shadow: var(--yd-shadow); }
+.yd-profile-heading span { color: #ffe585; font-size: 13px; font-weight: 900; }
+.yd-profile-heading h1 { margin: 6px 0; font-size: 32px; font-weight: 950; }
+.yd-profile-heading p { margin: 0; color: #c8ced8; line-height: 1.75; }
+.yd-profile-heading > img { width: 96px; height: 96px; object-fit: cover; border-radius: 50%; border: 4px solid var(--yd-yellow); box-shadow: 0 12px 28px rgba(0,0,0,.24); }
+.yd-profile-alert { margin: 16px 0; padding: 13px 15px; border-radius: 8px; font-weight: 800; }
+.yd-profile-alert.success { background: #effaf2; border: 1px solid #bfe8c8; color: #146229; }
+.yd-profile-alert.error { background: #fff0f0; border: 1px solid #ffc8c8; color: #9f1717; }
+.yd-profile-form { display: grid; gap: 16px; margin-top: 18px; }
+.yd-profile-panel { padding: 20px; border: 1px solid var(--yd-border); border-radius: 8px; background: #fff; box-shadow: var(--yd-shadow); }
+.yd-profile-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.yd-profile-panel-head span { color: #8a6500; font-size: 12px; font-weight: 900; }
+.yd-profile-panel-head h2 { margin: 3px 0 0; font-size: 20px; font-weight: 950; }
+.yd-profile-panel-head > i { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 8px; background: var(--yd-yellow); color: var(--yd-ink); font-size: 18px; }
+.yd-avatar-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.yd-avatar-choice { margin: 0; cursor: pointer; }
+.yd-avatar-choice > input { position: absolute; opacity: 0; pointer-events: none; }
+.yd-avatar-choice > span { position: relative; min-height: 154px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 10px; border: 2px solid #e5e8ed; border-radius: 8px; background: #fafbfc; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.yd-avatar-choice img { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; }
+.yd-avatar-choice strong { color: #343a45; font-size: 12px; text-align: center; }
+.yd-avatar-choice span > i { position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; display: none; place-items: center; border-radius: 50%; background: var(--yd-yellow); color: var(--yd-ink); font-size: 11px; }
+.yd-avatar-choice input:checked + span { border-color: var(--yd-yellow); background: #fff9df; transform: translateY(-2px); }
+.yd-avatar-choice input:checked + span > i { display: grid; }
+.yd-avatar-choice input:focus-visible + span { outline: 3px solid rgba(247,197,30,.45); outline-offset: 2px; }
+.yd-profile-note { margin: 14px 0 0; color: var(--yd-muted); font-size: 12px; font-weight: 750; }
+.yd-profile-note i { color: #16803c; margin-left: 5px; }
+.yd-profile-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.yd-profile-fields label { display: grid; gap: 7px; margin: 0; color: #343a45; font-size: 13px; font-weight: 850; }
+.yd-profile-fields input { min-height: 46px; width: 100%; padding: 10px 12px; border: 1px solid #dfe3ea; border-radius: 8px; background: #fff; color: var(--yd-ink); }
+.yd-profile-fields input[readonly] { background: #f4f6f8; color: #68707e; }
+.yd-profile-fields input:focus { outline: 0; border-color: var(--yd-yellow); box-shadow: 0 0 0 3px rgba(247,197,30,.18); }
+.yd-password-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.yd-profile-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.yd-profile-actions a, .yd-profile-actions button { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 18px; border-radius: 8px; font-weight: 900; text-decoration: none; cursor: pointer; }
+.yd-profile-actions a { border: 1px solid var(--yd-border); background: #fff; color: var(--yd-ink); }
+.yd-profile-actions button { border: 0; background: var(--yd-yellow); color: var(--yd-ink); }
+
 .yd-admin-page, .yd-funds-page { width: min(100% - 32px, 1440px); margin-inline: auto !important; padding-bottom: 44px; }
 .yd-admin-hero, .yd-funds-hero { min-height: 160px; padding: 26px; border-radius: 8px; background: linear-gradient(135deg,#17191f 0%,#242932 100%); color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 4px solid var(--yd-yellow); box-shadow: var(--yd-shadow); }
 .yd-admin-hero span, .yd-funds-hero span { color: #ffe585; font-weight: 900; }
@@ -165,6 +203,7 @@ body { margin: 0; background: var(--yd-bg); color: var(--yd-ink); font-family: "
     #app, #main-container { margin-left: 0 !important; margin-right: 0 !important; padding-top: 78px; }
     .content, .yd-admin-page, .yd-funds-page { width: min(100% - 20px, 1440px); }
     .yd-admin-stats { grid-template-columns: repeat(2,1fr); }
+    .yd-avatar-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
     .yd-admin-hero, .yd-funds-hero { align-items: stretch; flex-direction: column; }
@@ -172,4 +211,10 @@ body { margin: 0; background: var(--yd-bg); color: var(--yd-ink); font-family: "
     .yd-admin-stats { margin-inline: 0; }
     .yd-exchange-card { align-items: stretch; flex-direction: column; }
     .yd-ledger-search input { width: 180px; }
+    .yd-profile-page { width: min(100% - 20px, 1120px); }
+    .yd-profile-heading { align-items: flex-start; }
+    .yd-profile-heading > img { width: 74px; height: 74px; }
+    .yd-avatar-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .yd-profile-fields, .yd-password-fields { grid-template-columns: 1fr; }
+    .yd-profile-actions, .yd-profile-actions a, .yd-profile-actions button { width: 100%; }
 }

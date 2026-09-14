@@ -1,6 +1,7 @@
 @php
     $currentUser = Auth::user();
-    $avatar = $currentUser && !empty($currentUser->avatar) ? $currentUser->avatar : 'avatar.jpg';
+    $duckAvatars = ['duck-happy.jpg', 'duck-cool.jpg', 'duck-excited.jpg', 'duck-calm.jpg', 'duck-clever.jpg', 'duck-party.jpg'];
+    $avatar = $currentUser && in_array((string) $currentUser->avatar, $duckAvatars, true) ? $currentUser->avatar : 'duck-happy.jpg';
 @endphp
 <div class="js-sidebar-scroll">
     <div class="smini-hidden">

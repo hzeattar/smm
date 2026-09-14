@@ -21,10 +21,15 @@
     @yield('header-scripts')
 </head>
 <body>
+@php
+    $brandHome = Auth::guard('admin')->check()
+        ? route('admin.dashboard')
+        : (Auth::check() ? route('user.dashboard') : route('welcome'));
+@endphp
 <div id="page-container" class="@if (Helper::getDefaultDirection() == 'rtl') rtl-support sidebar-r @endif">
     <nav id="sidebar" aria-label="Main Navigation">
         <div class="content-header bg-primary">
-            <a class="yd-sidebar-brand" href="{{ route('welcome') }}">
+            <a class="yd-sidebar-brand" href="{{ $brandHome }}">
                 <img src="{{ asset('brand/yellow-duck.svg') }}" alt="البطة الصفرا">
                 <span><strong>البطة الصفرا</strong><small>خدمات السوشيال ميديا</small></span>
             </a>

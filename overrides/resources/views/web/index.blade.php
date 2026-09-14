@@ -1,6 +1,11 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    $dashboardHome = Auth::guard('admin')->check()
+        ? route('admin.dashboard')
+        : (Auth::check() ? route('user.dashboard') : null);
+@endphp
 @include('web.partials.header',['links'=>false])
 
 <main class="yd-landing">
@@ -12,11 +17,15 @@
                     <h1>كل خدمات السوشيال ميديا في مكان واحد مع <span>البطة الصفرا</span></h1>
                     <p>اطلب المتابعين والمشاهدات والتفاعلات والخدمات الرقمية بسهولة، تابع طلباتك من لوحة واحدة، واربط مزودي الخدمات والدفع بطريقة منظمة وقابلة للتوسع.</p>
                     <div class="yd-hero-actions">
-                        @if ($registrationEnabled ?? true)
-                            <a class="yd-primary-cta" href="{{ route('register') }}">ابدأ الآن</a>
-                        @endif
-                        @if ($loginEnabled ?? true)
-                            <a class="yd-secondary-cta" href="{{ route('login') }}">عندي حساب</a>
+                        @if($dashboardHome)
+                            <a class="yd-primary-cta" href="{{ $dashboardHome }}">الذهاب إلى لوحة التحكم</a>
+                        @else
+                            @if ($registrationEnabled ?? true)
+                                <a class="yd-primary-cta" href="{{ route('register') }}">ابدأ الآن</a>
+                            @endif
+                            @if ($loginEnabled ?? true)
+                                <a class="yd-secondary-cta" href="{{ route('login') }}">عندي حساب</a>
+                            @endif
                         @endif
                     </div>
                     <div class="yd-trust-row">
@@ -46,11 +55,11 @@
     <section class="yd-platform-strip" aria-label="المنصات المدعومة">
         <div class="container">
             <div class="yd-platforms">
-                <span>📸 Instagram</span>
-                <span>🎵 TikTok</span>
-                <span>▶️ YouTube</span>
-                <span>📘 Facebook</span>
-                <span>✈️ Telegram</span>
+                <span><img src="{{ asset('images/platforms/instagram.svg') }}" alt="">Instagram</span>
+                <span><img src="{{ asset('images/platforms/tiktok.svg') }}" alt="">TikTok</span>
+                <span><img src="{{ asset('images/platforms/youtube.svg') }}" alt="">YouTube</span>
+                <span><img src="{{ asset('images/platforms/facebook.svg') }}" alt="">Facebook</span>
+                <span><img src="{{ asset('images/platforms/telegram.svg') }}" alt="">Telegram</span>
                 <span>⚡ والمزيد</span>
             </div>
         </div>
@@ -64,11 +73,11 @@
                 <p>المنصة جاهزة لعرض خدمات مزودي الـSMM الذين تم ربطهم، ويمكن إدارة الأسعار والهامش والخدمات من لوحة الإدارة.</p>
             </div>
             <div class="yd-service-grid">
-                <article class="yd-service-card"><div class="yd-service-icon">📸</div><h3>Instagram</h3><p>متابعون، إعجابات، مشاهدات، تفاعل وخدمات إضافية حسب المزود.</p><span class="yd-card-arrow">←</span></article>
-                <article class="yd-service-card"><div class="yd-service-icon">🎵</div><h3>TikTok</h3><p>مشاهدات، متابعون، إعجابات وتفاعل على المقاطع والحسابات.</p><span class="yd-card-arrow">←</span></article>
-                <article class="yd-service-card"><div class="yd-service-icon">▶️</div><h3>YouTube</h3><p>مشاهدات، إعجابات، مشتركين وخدمات نمو للقنوات والمحتوى.</p><span class="yd-card-arrow">←</span></article>
-                <article class="yd-service-card"><div class="yd-service-icon">📘</div><h3>Facebook</h3><p>تفاعل الصفحات والمنشورات والمتابعين والمشاهدات.</p><span class="yd-card-arrow">←</span></article>
-                <article class="yd-service-card"><div class="yd-service-icon">✈️</div><h3>Telegram</h3><p>أعضاء، مشاهدات وتفاعل للقنوات والمجموعات وفق الخدمات المتاحة.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon"><img src="{{ asset('images/platforms/instagram.svg') }}" alt="Instagram"></div><h3>Instagram</h3><p>متابعون، إعجابات، مشاهدات، تفاعل وخدمات إضافية حسب المزود.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon"><img src="{{ asset('images/platforms/tiktok.svg') }}" alt="TikTok"></div><h3>TikTok</h3><p>مشاهدات، متابعون، إعجابات وتفاعل على المقاطع والحسابات.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon"><img src="{{ asset('images/platforms/youtube.svg') }}" alt="YouTube"></div><h3>YouTube</h3><p>مشاهدات، إعجابات، مشتركين وخدمات نمو للقنوات والمحتوى.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon"><img src="{{ asset('images/platforms/facebook.svg') }}" alt="Facebook"></div><h3>Facebook</h3><p>تفاعل الصفحات والمنشورات والمتابعين والمشاهدات.</p><span class="yd-card-arrow">←</span></article>
+                <article class="yd-service-card"><div class="yd-service-icon"><img src="{{ asset('images/platforms/telegram.svg') }}" alt="Telegram"></div><h3>Telegram</h3><p>أعضاء، مشاهدات وتفاعل للقنوات والمجموعات وفق الخدمات المتاحة.</p><span class="yd-card-arrow">←</span></article>
                 <article class="yd-service-card"><div class="yd-service-icon">⚡</div><h3>خدمات إضافية</h3><p>المنصة قابلة لإضافة أي منصة أو نوع خدمة يدعمه مزود الـAPI.</p><span class="yd-card-arrow">←</span></article>
             </div>
         </div>
@@ -134,11 +143,15 @@
                     <p>أنشئ حسابك، ادخل للوحة المستخدم، وابدأ اختيار الخدمات المتاحة.</p>
                 </div>
                 <div class="yd-launch-actions">
-                    @if ($registrationEnabled ?? true)
-                        <a class="yd-primary-cta" href="{{ route('register') }}">إنشاء حساب</a>
-                    @endif
-                    @if ($loginEnabled ?? true)
-                        <a class="yd-secondary-cta yd-secondary-dark" href="{{ route('login') }}">تسجيل الدخول</a>
+                    @if($dashboardHome)
+                        <a class="yd-primary-cta" href="{{ $dashboardHome }}">لوحة التحكم</a>
+                    @else
+                        @if ($registrationEnabled ?? true)
+                            <a class="yd-primary-cta" href="{{ route('register') }}">إنشاء حساب</a>
+                        @endif
+                        @if ($loginEnabled ?? true)
+                            <a class="yd-secondary-cta yd-secondary-dark" href="{{ route('login') }}">تسجيل الدخول</a>
+                        @endif
                     @endif
                 </div>
             </div>

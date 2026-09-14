@@ -1,8 +1,13 @@
+@php
+    $footerHome = Auth::guard('admin')->check()
+        ? route('admin.dashboard')
+        : (Auth::check() ? route('user.dashboard') : route('welcome'));
+@endphp
 <footer class="yd-footer">
     <div class="container">
         <div class="yd-footer-grid">
             <div class="yd-footer-brand">
-                <a href="{{ route('welcome') }}" class="yellow-duck-lockup" aria-label="البطة الصفرا لخدمات السوشيال ميديا">
+                <a href="{{ $footerHome }}" class="yellow-duck-lockup" aria-label="البطة الصفرا لخدمات السوشيال ميديا">
                     <img src="{{ asset('brand/yellow-duck.svg') }}" alt="البطة الصفرا">
                     <span class="yellow-duck-brand">البطة الصفرا<small>خدمات السوشيال ميديا</small></span>
                 </a>

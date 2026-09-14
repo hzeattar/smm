@@ -1,6 +1,7 @@
 @php
     $admin = Auth::guard('admin')->user();
-    $avatar = $admin && !empty($admin->avatar) ? $admin->avatar : 'avatar.jpg';
+    $duckAvatars = ['duck-happy.jpg', 'duck-cool.jpg', 'duck-excited.jpg', 'duck-calm.jpg', 'duck-clever.jpg', 'duck-party.jpg'];
+    $avatar = $admin && in_array((string) $admin->avatar, $duckAvatars, true) ? $admin->avatar : 'duck-happy.jpg';
     $isUsersOpen = request()->routeIs('admin.users.*') || request()->routeIs('admin.admins.*');
     $isSettingsOpen = request()->routeIs('admin.settings.*') || request()->routeIs('admin.languages.*') || request()->routeIs('admin.faqs.*') || request()->routeIs('admin.announcements.*');
 @endphp

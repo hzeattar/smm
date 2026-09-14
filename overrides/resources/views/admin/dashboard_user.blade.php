@@ -168,6 +168,7 @@
     var form = document.getElementById('yd-order-form');
     var message = document.getElementById('yd-order-message');
     var servicesUrlBase = "{{ url('/user/orders/services') }}";
+    var platformIconBase = "{{ asset('images/platforms') }}";
     var exchangeRate = {{ json_encode($exchangeRate) }};
     var services = [];
     var selected = null;
@@ -230,20 +231,21 @@
 
     function platformLogo(key) {
         var icons = {
-            all: 'fa fa-th-large',
-            instagram: 'fab fa-instagram',
-            facebook: 'fab fa-facebook-f',
-            youtube: 'fab fa-youtube',
-            tiktok: 'fab fa-tiktok',
-            telegram: 'fab fa-telegram-plane',
-            twitter: 'fab fa-twitter',
-            snapchat: 'fab fa-snapchat-ghost',
-            spotify: 'fab fa-spotify',
-            linkedin: 'fab fa-linkedin-in',
-            discord: 'fab fa-discord',
-            other: 'fa fa-ellipsis-h'
+            instagram: 'instagram.svg',
+            facebook: 'facebook.svg',
+            youtube: 'youtube.svg',
+            tiktok: 'tiktok.svg',
+            telegram: 'telegram.svg',
+            twitter: 'x.svg',
+            snapchat: 'snapchat.svg',
+            spotify: 'spotify.svg',
+            linkedin: 'linkedin.svg',
+            discord: 'discord.svg'
         };
-        return '<b class="yd-platform-logo yd-platform-logo-' + key + '"><i class="' + (icons[key] || icons.other) + '" aria-hidden="true"></i></b>';
+        if (!icons[key]) {
+            return '<b class="yd-platform-logo yd-platform-logo-' + key + '"><i class="fa ' + (key === 'all' ? 'fa-th-large' : 'fa-ellipsis-h') + '" aria-hidden="true"></i></b>';
+        }
+        return '<b class="yd-platform-logo"><img src="' + platformIconBase + '/' + icons[key] + '" alt="" aria-hidden="true"></b>';
     }
 
     function translateServiceName(name) {

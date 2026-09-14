@@ -1,9 +1,16 @@
+@php
+    $isAdminSession = Auth::guard('admin')->check();
+    $isUserSession = Auth::check();
+    $brandHome = $isAdminSession
+        ? route('admin.dashboard')
+        : ($isUserSession ? route('user.dashboard') : route('welcome'));
+@endphp
 <header class="header-area header-sticky yd-public-header">
     <div class="container">
         <div class="row">
             <div class="col-12">
                 <nav class="main-nav" aria-label="التنقل الرئيسي">
-                    <a href="{{ route('welcome') }}" class="logo yellow-duck-lockup yd-public-logo" aria-label="البطة الصفرا لخدمات السوشيال ميديا">
+                    <a href="{{ $brandHome }}" class="logo yellow-duck-lockup yd-public-logo" aria-label="البطة الصفرا لخدمات السوشيال ميديا">
                         <img src="{{ asset('brand/yellow-duck.svg') }}" alt="البطة الصفرا">
                         <span class="yellow-duck-brand">البطة الصفرا<small>خدمات السوشيال ميديا</small></span>
                     </a>
@@ -17,11 +24,15 @@
                         <li><a class="link" href="{{ $links ? route('welcome').'#faq' : '#faq' }}">الأسئلة الشائعة</a></li>
                         <li><a class="link" href="{{ $links ? route('welcome').'#contact-us' : '#contact-us' }}">تواصل معنا</a></li>
 
-                        @if ($loginEnabled ?? true)
-                            <li class="login"><a href="{{ route('login') }}">تسجيل الدخول</a></li>
-                        @endif
-                        @if ($registrationEnabled ?? true)
-                            <li class="try"><a href="{{ route('register') }}">إنشاء حساب</a></li>
+                        @if($isAdminSession || $isUserSession)
+                            <li class="try"><a href="{{ $brandHome }}">لوحة التحكم</a></li>
+                        @else
+                            @if ($loginEnabled ?? true)
+                                <li class="login"><a href="{{ route('login') }}">تسجيل الدخول</a></li>
+                            @endif
+                            @if ($registrationEnabled ?? true)
+                                <li class="try"><a href="{{ route('register') }}">إنشاء حساب</a></li>
+                            @endif
                         @endif
 
                         @if(isset($languages) && count($languages))
