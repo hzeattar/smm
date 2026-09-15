@@ -4,19 +4,58 @@
 @php
     $isAdmin = Gate::allows('isAdmin');
     $rate = \App\Support\YellowDuckMoney::exchangeRate();
+    $proofTransactionIds = $proofTransactionIds ?? [];
+    $users = $users ?? collect();
 @endphp
 <main id="main-container" class="yd-admin-page yd-transactions-page" dir="rtl">
     <section class="yd-admin-hero">
         <div>
             <span>{{ $isAdmin ? 'المعاملات والإيداعات' : 'سجل المدفوعات' }}</span>
             <h1>{{ $isAdmin ? 'مراجعة الإيداعات واعتمادها' : 'متابعة طلبات الإيداع' }}</h1>
-            <p>{{ $isAdmin ? 'اعتماد الإيداع اليدوي يضيف رصيد الدولار المحسوب بسعر التحويل المثبت في المعاملة.' : 'يظهر طلب الإيداع قيد المراجعة حتى يتم اعتماده.' }}</p>
+            <p>{{ $isAdmin ? 'راجع وسيلة التحويل والحساب المستلم وصورة الإثبات قبل اعتماد الرصيد. كل تعديل يدوي على الرصيد يتم تسجيله كمعاملة.' : 'يظهر طلب الإيداع قيد المراجعة حتى يتم اعتماده.' }}</p>
         </div>
         <a class="btn btn-primary" href="{{ $isAdmin ? route('admin.payment-methods.index') : route('user.add-funds') }}"><i class="fa fa-plus"></i> {{ $isAdmin ? 'إدارة طرق الدفع' : 'إضافة رصيد' }}</a>
     </section>
 
     @if(session('success'))
         <div class="yd-funds-alert success">{{ session('success') }}</div>
+    @endif
+    @if($errors->any())
+        <div class="yd-funds-alert error">{{ $errors->first() }}</div>
+    @endif
+
+    @if($isAdmin)
+        <section class="block yd-manual-credit-card">
+            <div class="block-header">
+                <div>
+                    <h2 class="block-title">إضافة رصيد يدوي لعميل</h2>
+                    <p>الإضافة تتم بالدولار وتُسجل تلقائيًا في سجل المعاملات باسم الأدمن المنفذ.</p>
+                </div>
+            </div>
+            <form action="{{ route('admin.manual-balance') }}" method="post" class="yd-manual-credit-form">
+                @csrf
+                <label>
+                    <span>العميل</span>
+                    <select name="user_id" required>
+                        <option value="">اختر العميل</option>
+                        @foreach($users as $userOption)
+                            <option value="{{ $userOption->id }}" {{ (string) old('user_id') === (string) $userOption->id ? 'selected' : '' }}>
+                                {{ $userOption->username }} — {{ $userOption->email }} — الرصيد ${{ number_format((float) $userOption->funds, 4) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+                <label>
+                    <span>الرصيد المضاف بالدولار</span>
+                    <input type="number" name="amount" step="0.0001" min="0.0001" value="{{ old('amount') }}" placeholder="مثال: 10.0000" required>
+                </label>
+                <label class="yd-credit-note">
+                    <span>ملاحظة داخلية</span>
+                    <input type="text" name="note" maxlength="500" value="{{ old('note') }}" placeholder="سبب إضافة الرصيد — اختياري">
+                </label>
+                <button type="submit" class="btn btn-primary"><i class="fa fa-wallet"></i> إضافة الرصيد وتسجيل العملية</button>
+            </form>
+        </section>
     @endif
 
     <section class="block yd-ledger">
@@ -34,8 +73,10 @@
                         <th>رقم العملية</th>
                         @if($isAdmin)<th>المستخدم</th>@endif
                         <th>الطريقة</th>
+                        @if($isAdmin)<th>المحول إلى</th>@endif
                         <th>المبلغ</th>
                         <th>الرصيد</th>
+                        @if($isAdmin)<th>الإثبات</th>@endif
                         <th>الحالة</th>
                         <th>التاريخ</th>
                         @if($isAdmin)<th>إجراء</th>@endif
@@ -48,11 +89,31 @@
                             $credit = \App\Support\YellowDuckMoney::creditedUsd($transaction);
                             $pending = $manual && $transaction->status !== 'paid';
                             $status = $transaction->status === 'paid' ? 'تم الاعتماد' : ($pending ? 'قيد المراجعة' : 'مسترد');
+                            $hasProof = in_array((int) $transaction->id, array_map('intval', $proofTransactionIds), true);
+                            $notes = (string) $transaction->notes;
+                            $destination = '-';
+                            $senderPhone = '-';
+                            if (preg_match('/Payment destination:\s*(.+)/i', $notes, $destinationMatch)) {
+                                $destination = trim($destinationMatch[1]);
+                            } elseif ($manual && stripos((string) optional($transaction->paymentMethod)->name, 'vodafone') !== false) {
+                                $destination = '01205323440';
+                            } elseif ($manual && stripos((string) optional($transaction->paymentMethod)->name, 'insta') !== false) {
+                                $destination = 'menna_206@instapay';
+                            }
+                            if (preg_match('/Sender phone:\s*(.+)/i', $notes, $senderMatch)) {
+                                $senderPhone = trim($senderMatch[1]);
+                            }
                         @endphp
                         <tr>
                             <td><strong>{{ $transaction->transaction_id }}</strong></td>
                             @if($isAdmin)<td>{{ optional($transaction->user)->email ?: '-' }}</td>@endif
                             <td>{{ optional($transaction->paymentMethod)->name ?: 'غير محددة' }}</td>
+                            @if($isAdmin)
+                                <td>
+                                    <strong class="yd-destination">{{ $destination }}</strong>
+                                    @if($manual)<small>من: {{ $senderPhone }}</small>@endif
+                                </td>
+                            @endif
                             <td>
                                 @if($manual)
                                     <strong>{{ number_format((float) $transaction->amount, 2) }} ج.م</strong>
@@ -62,30 +123,47 @@
                             </td>
                             <td>
                                 <strong>${{ number_format($credit, 4) }}</strong>
-                                <small>{{ number_format($credit * $rate, 2) }} ج.م</small>
+                                @if($manual)<small>{{ number_format($credit * $rate, 2) }} ج.م</small>@endif
                             </td>
+                            @if($isAdmin)
+                                <td>
+                                    @if($manual && $hasProof)
+                                        <a class="yd-proof-thumb" href="{{ route('admin.transactions.proof', $transaction->id) }}" target="_blank" rel="noopener" title="فتح صورة إثبات التحويل">
+                                            <img src="{{ route('admin.transactions.proof', $transaction->id) }}" alt="إثبات التحويل">
+                                            <span>فتح الصورة</span>
+                                        </a>
+                                    @elseif($manual)
+                                        <span class="yd-no-proof">لا توجد صورة</span>
+                                    @else
+                                        <span>-</span>
+                                    @endif
+                                </td>
+                            @endif
                             <td><span class="yd-ledger-status {{ $transaction->status === 'paid' ? 'paid' : ($pending ? 'pending' : 'refund') }}">{{ $status }}</span></td>
                             <td>{{ $transaction->created_at }}</td>
                             @if($isAdmin)
                                 <td>
-                                    @if($pending)
-                                        <form action="{{ route('admin.transactions.update', $transaction->id) }}" method="post" class="yd-approve-form">
-                                            @csrf
-                                            @method('PUT')
-                                            <input type="hidden" name="status" value="paid">
-                                            <button type="submit" class="btn btn-primary">اعتماد +${{ number_format($credit, 4) }}</button>
-                                        </form>
-                                    @else
+                                    <div class="yd-transaction-actions">
+                                        @if($pending)
+                                            <form action="{{ route('admin.transactions.update', $transaction->id) }}" method="post" class="yd-approve-form">
+                                                @csrf
+                                                @method('PUT')
+                                                <input type="hidden" name="status" value="paid">
+                                                <button type="submit" class="btn btn-primary" {{ $hasProof ? '' : 'disabled' }}>
+                                                    اعتماد +${{ number_format($credit, 4) }}
+                                                </button>
+                                            </form>
+                                        @endif
                                         <details class="yd-ledger-notes">
                                             <summary>التفاصيل</summary>
                                             <pre>{{ $transaction->notes ?: 'لا توجد ملاحظات' }}</pre>
                                         </details>
-                                    @endif
+                                    </div>
                                 </td>
                             @endif
                         </tr>
                     @empty
-                        <tr><td colspan="{{ $isAdmin ? 8 : 6 }}" class="yd-ledger-empty">لا توجد معاملات مطابقة.</td></tr>
+                        <tr><td colspan="{{ $isAdmin ? 11 : 6 }}" class="yd-ledger-empty">لا توجد معاملات مطابقة.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -93,4 +171,12 @@
         <div class="yd-ledger-pagination">{{ $transactions->appends(request()->query())->links() }}</div>
     </section>
 </main>
+
+<style>
+.yd-manual-credit-card{margin-top:18px}.yd-manual-credit-card .block-header p{margin:5px 0 0;color:#68707e;font-size:12px}
+.yd-manual-credit-form{display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(180px,.6fr) minmax(260px,1fr) auto;gap:12px;align-items:end;padding:18px}
+.yd-manual-credit-form label{display:grid;gap:7px;margin:0;font-size:12px;font-weight:850;color:#343a45}.yd-manual-credit-form input,.yd-manual-credit-form select{width:100%;height:46px;box-sizing:border-box;border:1px solid #dfe3ea;border-radius:9px;background:#fff;padding:0 12px;font:inherit}.yd-manual-credit-form input:focus,.yd-manual-credit-form select:focus{outline:0;border-color:#f7c51e;box-shadow:0 0 0 3px rgba(247,197,30,.15)}.yd-manual-credit-form button{height:46px;white-space:nowrap}
+.yd-ledger-table td small{display:block;margin-top:4px;color:#7a818c;font-size:11px}.yd-destination{direction:ltr;display:inline-block;unicode-bidi:plaintext}.yd-proof-thumb{display:inline-grid;gap:4px;text-decoration:none;text-align:center;color:#5c6572;font-size:10px;font-weight:800}.yd-proof-thumb img{width:64px;height:48px;object-fit:cover;border:1px solid #dfe3ea;border-radius:7px;background:#fff}.yd-no-proof{display:inline-block;padding:5px 7px;border-radius:7px;background:#fff0f0;color:#9f1717;font-size:11px;font-weight:800}.yd-transaction-actions{display:grid;gap:7px;min-width:130px}.yd-approve-form button:disabled{opacity:.45;cursor:not-allowed}.yd-ledger-notes summary{cursor:pointer;color:#56606d;font-size:11px;font-weight:800}.yd-ledger-notes pre{max-width:320px;white-space:pre-wrap;word-break:break-word;margin:7px 0 0;padding:9px;border-radius:7px;background:#f6f7f9;font-size:10px;line-height:1.6}
+@media(max-width:1100px){.yd-manual-credit-form{grid-template-columns:1fr 1fr}.yd-credit-note{grid-column:1/-1}.yd-manual-credit-form button{grid-column:1/-1}}@media(max-width:650px){.yd-manual-credit-form{grid-template-columns:1fr}.yd-credit-note,.yd-manual-credit-form button{grid-column:auto}}
+</style>
 @endsection
