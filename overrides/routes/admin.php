@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\ManualDepositController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\CategoryController;
@@ -82,6 +83,7 @@ Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group
     Route::get('profil', [UserController::class, 'profil'])->name('profil');
     Route::post('profil', [UserController::class, 'profil'])->name('post-profil');
     Route::get('add-funds', [PaymentController::class, 'addFunds'])->name('add-funds');
+    Route::post('add-funds/manual', [ManualDepositController::class, 'store'])->name('manual-deposit');
     Route::post('add-funds/{payment_method}', [PaymentController::class, 'addFunds']);
     Route::get('payment/status', [PaymentController::class, 'getPaymentStatus'])->name('get-payment-status');
     Route::get('payment-methods/{id}', [PaymentMethodController::class, 'show']);
