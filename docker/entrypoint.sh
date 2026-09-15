@@ -19,16 +19,12 @@ if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
   export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
 fi
 
-# Railway MySQL references are the source of truth. Do not preserve placeholder
-# Laravel DB_* values such as DB_DATABASE=forge when MYSQL* values exist.
 if [ -n "${MYSQLHOST:-}" ]; then export DB_HOST="$MYSQLHOST"; fi
 if [ -n "${MYSQLPORT:-}" ]; then export DB_PORT="$MYSQLPORT"; else export DB_PORT="${DB_PORT:-3306}"; fi
 if [ -n "${MYSQLDATABASE:-}" ]; then export DB_DATABASE="$MYSQLDATABASE"; fi
 if [ -n "${MYSQLUSER:-}" ]; then export DB_USERNAME="$MYSQLUSER"; fi
 if [ -n "${MYSQLPASSWORD:-}" ]; then export DB_PASSWORD="$MYSQLPASSWORD"; fi
 
-# Stable fallback key when Railway APP_KEY has not been configured yet. The seed
-# is never logged or written to Git; a real APP_KEY variable still takes priority.
 if [ -z "${APP_KEY:-}" ]; then
   KEY_SEED="${YELLOWDUCK_APP_KEY_SEED:-${MYSQLPASSWORD:-${DB_PASSWORD:-}}}"
   if [ -n "$KEY_SEED" ]; then
@@ -43,10 +39,8 @@ fi
 mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache public
 chown -R www-data:www-data storage bootstrap/cache
 
-# Materialize the runtime environment so both CLI PHP and Apache/mod_php see
-# the same DB/app configuration. Secrets are not printed to stdout.
 php -r '
-$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE"];
+$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE","SMMFANSFASTER_API_URL","SMMFANSFASTER_API_KEY","SMMFANSFASTER_MARGIN_PERCENT","SMMFANSFASTER_PROVIDER_STATUS","SMM_STATUS_SYNC_ENABLED","SMM_STATUS_SYNC_INTERVAL"];
 foreach($keys as $k){
   $v=getenv($k);
   if($v===false) continue;
@@ -125,7 +119,6 @@ fi
 touch storage/installed
 chown www-data:www-data storage/installed
 
-# Refresh managed provider data only after the database is confirmed healthy.
 if [ -f scripts/sync-smmfansfaster.php ]; then
   php scripts/sync-smmfansfaster.php || true
 fi
