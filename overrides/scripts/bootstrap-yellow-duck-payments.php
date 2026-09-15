@@ -26,6 +26,19 @@ if (Schema::hasTable('settings') && !DB::table('settings')->where('name', 'yello
         'updated_at' => $now,
     ]);
 }
+
+DB::statement("CREATE TABLE IF NOT EXISTS `yellow_duck_deposit_proofs` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `transaction_id` BIGINT UNSIGNED NOT NULL,
+    `mime` VARCHAR(100) NOT NULL,
+    `filename` VARCHAR(255) NULL,
+    `data` MEDIUMBLOB NOT NULL,
+    `created_at` TIMESTAMP NULL DEFAULT NULL,
+    `updated_at` TIMESTAMP NULL DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `yd_deposit_proofs_transaction_unique` (`transaction_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
 $defaults = [
     [
         'name' => 'Vodafone Cash',
@@ -47,8 +60,8 @@ $defaults = [
         'fee' => 0,
         'environment' => 'production',
         'api_key' => null,
-        'private_key' => 'ارفع QR أو ضع رابط InstaPay من لوحة الأدمن.',
-        'client_id' => 'استخدم QR أو رابط InstaPay، ثم اكتب بيانات التحويل في النموذج.',
+        'private_key' => 'menna_206@instapay',
+        'client_id' => 'استخدم QR أو حوّل إلى menna_206@instapay ثم اكتب بيانات التحويل وارفق صورة الإثبات.',
         'image' => 'instapay.svg',
     ],
 ];
@@ -61,14 +74,27 @@ foreach ($defaults as $method) {
         $method['updated_at'] = $now;
         DB::table('payment_methods')->insert($method);
         $created++;
-    } elseif ((int) $existing->min === 10 && (int) $existing->max === 100000) {
-        // Upgrade only the defaults this project created; never overwrite an admin's own limits.
-        DB::table('payment_methods')->where('id', $existing->id)->update([
-            'min' => $method['min'],
-            'max' => $method['max'],
-            'image' => $method['image'],
-            'updated_at' => $now,
-        ]);
+        continue;
+    }
+
+    $updates = [];
+    if ((int) $existing->min === 10 && (int) $existing->max === 100000) {
+        $updates['min'] = $method['min'];
+        $updates['max'] = $method['max'];
+        $updates['image'] = $method['image'];
+    }
+
+    if ($method['name'] === 'InstaPay Egypt') {
+        $currentDestination = trim((string) $existing->private_key);
+        if ($currentDestination === '' || str_contains($currentDestination, 'ارفع QR')) {
+            $updates['private_key'] = 'menna_206@instapay';
+            $updates['client_id'] = $method['client_id'];
+        }
+    }
+
+    if ($updates) {
+        $updates['updated_at'] = $now;
+        DB::table('payment_methods')->where('id', $existing->id)->update($updates);
     }
 }
 
@@ -109,5 +135,5 @@ if ($resetFlag === 'true') {
     }
 }
 
-fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}; OwnerReset=" . ($ownerReset ? 'yes' : 'no') . "\n");
+fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}; ProofTable=yes; OwnerReset=" . ($ownerReset ? 'yes' : 'no') . "\n");
 exit(0);
