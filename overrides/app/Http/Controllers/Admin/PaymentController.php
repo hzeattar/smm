@@ -7,6 +7,8 @@ use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use App\Support\YellowDuckMoney;
 use PayPal\Api\Amount;
@@ -65,6 +67,11 @@ class PaymentController extends Controller
             'method_id' => 'required|integer|exists:payment_methods,id',
             'amount' => 'required|numeric|min:1',
             'sender_phone' => 'required|string|max:80',
+            'proof' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
+        ], [
+            'proof.required' => 'يرجى إرفاق صورة إثبات التحويل.',
+            'proof.mimes' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.',
+            'proof.max' => 'حجم صورة إثبات التحويل يجب ألا يتجاوز 5 ميجابايت.',
         ]);
 
         if ($validator->fails()) {
@@ -89,7 +96,12 @@ class PaymentController extends Controller
         $fee = round($amount * ((float) $method->fee / 100), 2);
         $rate = YellowDuckMoney::exchangeRate();
         $credit = max(0, round(($amount - $fee) / $rate, 4));
-        Transaction::withoutEvents(function () use ($method, $amount, $fee, $credit, $rate, $request) {
+        $destination = $this->paymentDestination($method);
+        $proof = $request->file('proof');
+
+        $this->ensureDepositProofTable();
+
+        DB::transaction(function () use ($method, $amount, $fee, $credit, $rate, $request, $destination, $proof) {
             $transaction = new Transaction();
             $transaction->method_id = $method->id;
             $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id();
@@ -101,18 +113,32 @@ class PaymentController extends Controller
             $transaction->status = 'refund';
             $transaction->notes = trim(implode("\n", array_filter([
                 'Yellow Duck manual deposit - pending admin approval.',
+                'Payment method: ' . (string) $method->name,
+                'Payment destination: ' . $destination,
                 'Deposit currency: EGP',
                 'Deposit amount (EGP): ' . number_format($amount, 2, '.', ''),
                 'Exchange rate: EGP ' . number_format($rate, 2, '.', '') . ' = USD 1',
                 'USD credit: ' . number_format($credit, 4, '.', ''),
-                'Sender phone: ' . (string) $request->input('sender_phone'),
+                'Sender phone: ' . trim((string) $request->input('sender_phone')),
+                'Proof filename: ' . (string) $proof->getClientOriginalName(),
             ])));
             $transaction->save();
+
+            DB::table('yellow_duck_deposit_proofs')->updateOrInsert(
+                ['transaction_id' => $transaction->id],
+                [
+                    'mime' => (string) ($proof->getMimeType() ?: 'image/jpeg'),
+                    'filename' => mb_substr((string) $proof->getClientOriginalName(), 0, 250),
+                    'data' => $proof->get(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            );
         });
 
         return redirect()
             ->route('user.transactions.index')
-            ->with('success', 'تم إرسال طلب الإيداع. سيتم إضافة الرصيد بعد مراجعة الأدمن.');
+            ->with('success', 'تم إرسال طلب الإيداع وصورة إثبات التحويل. سيتم إضافة الرصيد بعد مراجعة الأدمن.');
     }
 
     public function payWithStrip($request)
@@ -216,19 +242,14 @@ class PaymentController extends Controller
 
         $item = new Item();
         $item->setName('Add funds Payment')->setCurrency('USD')->setQuantity(1)->setPrice($amountToBePaid);
-
         $item_list = new ItemList();
         $item_list->setItems([$item]);
-
         $amount = new Amount();
         $amount->setCurrency('USD')->setTotal($amountToBePaid);
-
         $redirect_urls = new RedirectUrls();
         $redirect_urls->setReturnUrl(route('user.get-payment-status'))->setCancelUrl(route('user.get-payment-status'));
-
         $transaction = new \PayPal\Api\Transaction();
         $transaction->setAmount($amount)->setItemList($item_list)->setDescription('Add funds');
-
         $payment = new Payment();
         $payment->setIntent('Sale')->setPayer($payer)->setRedirectUrls($redirect_urls)->setTransactions([$transaction]);
 
@@ -328,8 +349,8 @@ class PaymentController extends Controller
                 'fee' => 0,
                 'environment' => 'production',
                 'api_key' => null,
-                'private_key' => 'ارفع QR أو ضع رابط InstaPay من لوحة الأدمن.',
-                'client_id' => 'استخدم QR أو رابط InstaPay، ثم اكتب بيانات التحويل في النموذج.',
+                'private_key' => 'menna_206@instapay',
+                'client_id' => 'استخدم QR أو حوّل إلى menna_206@instapay ثم اكتب بيانات التحويل وارفق صورة الإثبات.',
                 'image' => 'instapay.svg',
             ],
         ];
@@ -341,8 +362,53 @@ class PaymentController extends Controller
                 $data['created_at'] = $now;
                 $data['updated_at'] = $now;
                 PaymentMethod::insert($data);
+                continue;
+            }
+
+            if (stripos((string) $data['name'], 'instapay') !== false) {
+                $currentDestination = trim((string) $exists->private_key);
+                if ($currentDestination === '' || str_contains($currentDestination, 'ارفع QR')) {
+                    $exists->private_key = 'menna_206@instapay';
+                    $exists->client_id = $data['client_id'];
+                    $exists->save();
+                }
             }
         }
+    }
+
+    private function paymentDestination(PaymentMethod $method): string
+    {
+        $name = strtolower((string) $method->name);
+        $destination = trim((string) $method->private_key);
+
+        if (str_contains($name, 'vodafone')) {
+            return $destination !== '' ? $destination : '01205323440';
+        }
+
+        if (str_contains($name, 'instapay') || str_contains($name, 'insta pay')) {
+            return ($destination !== '' && !str_contains($destination, 'ارفع QR')) ? $destination : 'menna_206@instapay';
+        }
+
+        return $destination !== '' ? $destination : (string) $method->name;
+    }
+
+    private function ensureDepositProofTable(): void
+    {
+        if (Schema::hasTable('yellow_duck_deposit_proofs')) {
+            return;
+        }
+
+        DB::statement("CREATE TABLE IF NOT EXISTS `yellow_duck_deposit_proofs` (
+            `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            `transaction_id` BIGINT UNSIGNED NOT NULL,
+            `mime` VARCHAR(100) NOT NULL,
+            `filename` VARCHAR(255) NULL,
+            `data` MEDIUMBLOB NOT NULL,
+            `created_at` TIMESTAMP NULL DEFAULT NULL,
+            `updated_at` TIMESTAMP NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `yd_deposit_proofs_transaction_unique` (`transaction_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
 
     private function isManualPaymentMethod(PaymentMethod $method): bool
