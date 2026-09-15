@@ -19,6 +19,15 @@ class LoginController extends Controller
         $this->middleware('guest:admin')->except('logout');
     }
 
+    public function showLoginForm()
+    {
+        return response()
+            ->view('auth.login')
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
     protected function guard()
     {
         return Auth::guard('admin');
@@ -65,7 +74,6 @@ class LoginController extends Controller
                 return $this->sendLoginResponse($request);
             }
 
-            // Never leave a disabled administrator authenticated in the session.
             $this->guard()->logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
