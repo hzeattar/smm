@@ -7,6 +7,11 @@
         $selected = $methods->firstWhere('name', 'Vodafone Cash') ?: $methods->first();
         $vodafoneNumber = '01205323440';
         $exchangeRate = \App\Support\YellowDuckMoney::exchangeRate();
+        $instapayQrData = '';
+        $instapayQrDataPath = public_path('images/instapay-qr-data.txt');
+        if (is_file($instapayQrDataPath)) {
+            $instapayQrData = trim((string) @file_get_contents($instapayQrDataPath));
+        }
     @endphp
 
     <section class="yd-funds-hero">
@@ -37,7 +42,6 @@
                 @foreach($methods as $method)
                     @php
                         $isActive = $selected && $method->id === $selected->id;
-                        $name = strtolower($method->name);
                     @endphp
                     <button type="button" class="{{ $isActive ? 'active' : '' }}" data-method="{{ $method->id }}">
                         <img src="{{ asset('images/' . $method->image) }}" alt="{{ $method->name }}">
@@ -53,7 +57,6 @@
                         $lowerName = strtolower($method->name);
                         $isVodafone = stripos($lowerName, 'vodafone') !== false;
                         $isInstapay = stripos($lowerName, 'instapay') !== false || stripos($lowerName, 'insta') !== false;
-                        $accountValue = $isVodafone ? $vodafoneNumber : ($method->private_key ?: '');
                         $qrValue = trim((string) $method->api_key);
                         $showImageQr = $qrValue && preg_match('/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i', $qrValue);
                     @endphp
@@ -75,13 +78,14 @@
                                 <p>حوّل المبلغ على الرقم الموضح، ثم اكتب رقم الهاتف الذي تم التحويل منه والمبلغ بالجنيه بالضبط.</p>
                             @elseif($isInstapay)
                                 <div class="yd-qr-box">
-                                    @if($showImageQr)
+                                    @if($instapayQrData)
+                                        <img src="{{ $instapayQrData }}" alt="InstaPay QR">
+                                    @elseif($showImageQr)
                                         <img src="{{ stripos($qrValue, 'http') === 0 ? $qrValue : asset('images/' . ltrim($qrValue, '/')) }}" alt="InstaPay QR">
                                     @else
                                         <div>
                                             <i class="fa fa-qrcode"></i>
-                                            <span>مكان QR إنستا باي</span>
-                                            <small>يمكن رفع صورة QR لاحقًا ووضع اسمها أو رابطها من الأدمن.</small>
+                                            <span>QR إنستا باي غير متاح</span>
                                         </div>
                                     @endif
                                 </div>
