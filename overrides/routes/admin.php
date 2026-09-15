@@ -84,8 +84,6 @@ Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group
     Route::post('profil', [UserController::class, 'profil'])->name('post-profil');
     Route::get('add-funds', [PaymentController::class, 'addFunds'])->name('add-funds');
     Route::post('add-funds/manual', [ManualDepositController::class, 'store'])->name('manual-deposit');
-    Route::post('add-funds/{payment_method}', [PaymentController::class, 'addFunds']);
-    Route::get('payment/status', [PaymentController::class, 'getPaymentStatus'])->name('get-payment-status');
     Route::get('payment-methods/{id}', [PaymentMethodController::class, 'show']);
     Route::apiResource('services', ServiceController::class);
     Route::apiResource('transactions', TransactionController::class);
