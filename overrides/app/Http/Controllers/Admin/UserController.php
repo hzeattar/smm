@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\PaymentMethod;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Traits\MainTrait;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -137,6 +141,61 @@ class UserController extends Controller
         $user->update($data);
 
         return response()->json($user->fresh(), 200);
+    }
+
+    public function addBalance(Request $request)
+    {
+        abort_unless(Gate::allows('isAdmin'), 403);
+
+        $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'amount' => 'required|numeric|min:0.0001|max:1000000',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $amount = round((float) $validated['amount'], 4);
+        $admin = Auth::guard('admin')->user();
+
+        DB::transaction(function () use ($validated, $amount, $admin) {
+            $user = User::where('id', $validated['user_id'])->lockForUpdate()->firstOrFail();
+
+            $method = PaymentMethod::firstOrCreate(
+                ['name' => 'Admin Manual Credit'],
+                [
+                    'min' => 0,
+                    'max' => 1000000,
+                    'status' => 'deactive',
+                    'fee' => 0,
+                    'environment' => 'production',
+                    'api_key' => null,
+                    'private_key' => 'admin-panel',
+                    'client_id' => 'Manual balance adjustment from Yellow Duck admin panel.',
+                    'image' => 'admin-credit.svg',
+                ]
+            );
+
+            $user->funds = round((float) $user->funds + $amount, 4);
+            $user->save();
+
+            $transaction = new Transaction();
+            $transaction->method_id = $method->id;
+            $transaction->transaction_id = 'ADMIN-' . now()->format('YmdHis') . '-' . $user->id . '-' . strtoupper(bin2hex(random_bytes(2)));
+            $transaction->user_id = $user->id;
+            $transaction->amount = $amount;
+            $transaction->fee = 0;
+            $transaction->profit = $amount;
+            $transaction->take_fee = 0;
+            $transaction->status = 'paid';
+            $transaction->notes = trim(implode("\n", array_filter([
+                'Admin manual balance credit.',
+                'Credit USD: ' . number_format($amount, 4, '.', ''),
+                'Admin: ' . ($admin ? (string) $admin->email : 'unknown'),
+                'Note: ' . trim((string) ($validated['note'] ?? '')),
+            ])));
+            $transaction->save();
+        });
+
+        return back()->with('success', 'تمت إضافة $' . number_format($amount, 4) . ' إلى رصيد العميل وتسجيل العملية في سجل المعاملات.');
     }
 
     public function destroy($id)
