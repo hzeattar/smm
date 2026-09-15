@@ -4,16 +4,21 @@ set -euo pipefail
 PORT="${PORT:-8080}"
 sed -ri "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -ri "s/<VirtualHost \*:[0-9]+>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
+printf '%s\n' 'ServerName localhost' > /etc/apache2/conf-available/railway-servername.conf
+a2enconf railway-servername >/dev/null 2>&1 || true
 
 export APP_ENV="${APP_ENV:-production}"
 export APP_DEBUG="${APP_DEBUG:-false}"
 export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
 export APP_NAME="${APP_NAME:-البطة الصفرا لخدمات السوشيال ميديا}"
 export DB_CONNECTION="mysql"
-export SESSION_DRIVER="${SESSION_DRIVER:-file}"
+export SESSION_DRIVER="${SESSION_DRIVER:-database}"
+export SESSION_CONNECTION="${SESSION_CONNECTION:-mysql}"
+export SESSION_LIFETIME="${SESSION_LIFETIME:-480}"
+export SESSION_SECURE_COOKIE="${SESSION_SECURE_COOKIE:-true}"
+export SESSION_COOKIE="${SESSION_COOKIE:-yellow_duck_session_v4}"
 export CACHE_DRIVER="${CACHE_DRIVER:-file}"
 export QUEUE_CONNECTION="${QUEUE_CONNECTION:-sync}"
-export SESSION_COOKIE="${SESSION_COOKIE:-yellow_duck_session_v2}"
 
 if [ -z "${APP_URL:-}" ] && [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ]; then
   export APP_URL="https://${RAILWAY_PUBLIC_DOMAIN}"
@@ -40,7 +45,7 @@ mkdir -p storage/framework/cache storage/framework/sessions storage/framework/vi
 chown -R www-data:www-data storage bootstrap/cache
 
 php -r '
-$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE","SMMFANSFASTER_API_URL","SMMFANSFASTER_API_KEY","SMMFANSFASTER_MARGIN_PERCENT","SMMFANSFASTER_PROVIDER_STATUS","SMM_STATUS_SYNC_ENABLED","SMM_STATUS_SYNC_INTERVAL"];
+$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_CONNECTION","SESSION_LIFETIME","SESSION_SECURE_COOKIE","SESSION_DOMAIN","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE","SMMFANSFASTER_API_URL","SMMFANSFASTER_API_KEY","SMMFANSFASTER_MARGIN_PERCENT","SMMFANSFASTER_PROVIDER_STATUS","SMM_STATUS_SYNC_ENABLED","SMM_STATUS_SYNC_INTERVAL"];
 foreach($keys as $k){
   $v=getenv($k);
   if($v===false) continue;
@@ -116,12 +121,12 @@ else
   php scripts/bootstrap-db.php
 fi
 
+if [ "${SESSION_DRIVER}" = "database" ] && [ -f scripts/ensure-session-table.php ]; then
+  php scripts/ensure-session-table.php
+fi
+
 touch storage/installed
 chown www-data:www-data storage/installed
-
-if [ -f scripts/sync-smmfansfaster.php ]; then
-  php scripts/sync-smmfansfaster.php || true
-fi
 
 if [ -f scripts/bootstrap-yellow-duck-payments.php ]; then
   php scripts/bootstrap-yellow-duck-payments.php || true
@@ -132,6 +137,12 @@ php artisan route:clear || true
 php artisan view:clear || true
 
 write_health "ready"
+
+# The provider catalog can take a minute to sync. Run it in the background so
+# Apache becomes available immediately and Railway does not serve startup 502s.
+if [ -f scripts/sync-smmfansfaster.php ]; then
+  (php scripts/sync-smmfansfaster.php || true) &
+fi
 
 if [ "${SMM_STATUS_SYNC_ENABLED:-true}" = "true" ] && [ -n "${SMMFANSFASTER_API_URL:-}" ] && [ -n "${SMMFANSFASTER_API_KEY:-}" ] && [ -f scripts/sync-smm-orders.php ]; then
   SYNC_INTERVAL="${SMM_STATUS_SYNC_INTERVAL:-120}"
