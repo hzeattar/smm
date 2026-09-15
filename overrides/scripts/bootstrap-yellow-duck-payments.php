@@ -73,9 +73,10 @@ foreach ($defaults as $method) {
 }
 
 $ownerReset = false;
-if (strtolower((string) env('YELLOW_DUCK_RESET_OWNER_ACCOUNTS', 'false')) === 'true') {
-    $adminHash = trim((string) env('YELLOW_DUCK_ADMIN_PASSWORD_HASH', ''));
-    $userHash = trim((string) env('YELLOW_DUCK_USER_PASSWORD_HASH', ''));
+$resetFlag = strtolower(trim((string) (getenv('YELLOW_DUCK_RESET_OWNER_ACCOUNTS') ?: 'false')));
+if ($resetFlag === 'true') {
+    $adminHash = trim((string) (getenv('YELLOW_DUCK_ADMIN_PASSWORD_HASH') ?: ''));
+    $userHash = trim((string) (getenv('YELLOW_DUCK_USER_PASSWORD_HASH') ?: ''));
 
     if ($adminHash === '' || $userHash === '') {
         fwrite(STDERR, "Owner credential refresh requested but hash inputs are missing.\n");
