@@ -17,7 +17,17 @@
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-theme.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-admin.css') }}">
     <link rel="stylesheet" href="{{ asset('css/yellow-duck-polish.css') }}">
-    <style>@include('layouts.style-config')</style>
+    <style>
+        @include('layouts.style-config')
+        #sidebar,#page-header,#app,#main-container{transition:transform .22s ease,left .22s ease,right .22s ease,margin .22s ease}
+        @media (min-width:992px){
+            #page-container.yd-sidebar-collapsed #sidebar{transform:translateX(-105%)}
+            [dir="rtl"] #page-container.yd-sidebar-collapsed #sidebar{transform:translateX(105%)}
+            #page-container.yd-sidebar-collapsed #page-header{left:0!important;right:0!important}
+            #page-container.yd-sidebar-collapsed #app,
+            #page-container.yd-sidebar-collapsed #main-container{margin-left:0!important;margin-right:0!important}
+        }
+    </style>
     @yield('header-scripts')
 </head>
 <body>
@@ -58,12 +68,66 @@
     function ready(fn){ if(document.readyState !== 'loading'){ fn(); } else { document.addEventListener('DOMContentLoaded', fn); } }
     ready(function () {
         var page = document.getElementById('page-container');
-        document.querySelectorAll('[data-action="sidebar_toggle"]').forEach(function(btn){
-            btn.addEventListener('click', function(){ page.classList.toggle('yd-sidebar-open'); });
+        if (!page) return;
+        var mobile = window.matchMedia('(max-width: 991px)');
+        var toggles = document.querySelectorAll('[data-action="sidebar_toggle"]');
+
+        function desktopCollapsedPreference(){
+            try { return window.localStorage.getItem('yd-sidebar-collapsed') === '1'; }
+            catch (e) { return false; }
+        }
+        function saveDesktopPreference(collapsed){
+            try { window.localStorage.setItem('yd-sidebar-collapsed', collapsed ? '1' : '0'); }
+            catch (e) {}
+        }
+        function updateToggleState(){
+            var expanded = mobile.matches
+                ? page.classList.contains('yd-sidebar-open')
+                : !page.classList.contains('yd-sidebar-collapsed');
+            toggles.forEach(function(btn){
+                btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                btn.setAttribute('aria-label', expanded ? 'إغلاق القائمة' : 'فتح القائمة');
+                btn.setAttribute('title', expanded ? 'إغلاق القائمة' : 'فتح القائمة');
+            });
+        }
+        function syncForViewport(){
+            if (mobile.matches) {
+                page.classList.remove('yd-sidebar-collapsed');
+            } else {
+                page.classList.remove('yd-sidebar-open', 'sidebar-o');
+                page.classList.toggle('yd-sidebar-collapsed', desktopCollapsedPreference());
+            }
+            updateToggleState();
+        }
+
+        toggles.forEach(function(btn){
+            btn.addEventListener('click', function(e){
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                if (mobile.matches) {
+                    page.classList.remove('sidebar-o');
+                    page.classList.toggle('yd-sidebar-open');
+                } else {
+                    page.classList.remove('yd-sidebar-open', 'sidebar-o');
+                    var collapsed = page.classList.toggle('yd-sidebar-collapsed');
+                    saveDesktopPreference(collapsed);
+                }
+                updateToggleState();
+            }, true);
         });
+
         document.querySelectorAll('[data-action="sidebar_close"], .yd-sidebar-close').forEach(function(btn){
-            btn.addEventListener('click', function(){ page.classList.remove('yd-sidebar-open'); });
+            btn.addEventListener('click', function(e){
+                e.preventDefault();
+                page.classList.remove('yd-sidebar-open', 'sidebar-o');
+                updateToggleState();
+            });
         });
+
+        if (mobile.addEventListener) mobile.addEventListener('change', syncForViewport);
+        else if (mobile.addListener) mobile.addListener(syncForViewport);
+        syncForViewport();
+
         document.querySelectorAll('.nav-main-link-submenu').forEach(function(link){
             link.addEventListener('click', function(e){
                 e.preventDefault();
