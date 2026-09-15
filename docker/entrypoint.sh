@@ -137,6 +137,15 @@ php artisan config:clear || true
 php artisan route:clear || true
 php artisan view:clear || true
 
+if [ -f scripts/smoke-critical-flows.php ]; then
+  echo "Running critical user/admin smoke checks..."
+  if ! php scripts/smoke-critical-flows.php; then
+    write_health "critical_smoke_failed"
+    echo "Critical smoke checks failed; refusing to publish a broken deployment."
+    exit 80
+  fi
+fi
+
 write_health "ready"
 
 # The provider catalog can take a minute to sync. Run it in the background so
