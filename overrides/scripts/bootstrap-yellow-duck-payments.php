@@ -72,5 +72,41 @@ foreach ($defaults as $method) {
     }
 }
 
-fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}\n");
+$ownerReset = false;
+if (strtolower((string) env('YELLOW_DUCK_RESET_OWNER_ACCOUNTS', 'false')) === 'true') {
+    $adminHash = trim((string) env('YELLOW_DUCK_ADMIN_PASSWORD_HASH', ''));
+    $userHash = trim((string) env('YELLOW_DUCK_USER_PASSWORD_HASH', ''));
+
+    if ($adminHash === '' || $userHash === '') {
+        fwrite(STDERR, "Owner credential refresh requested but hash inputs are missing.\n");
+    } elseif (!Schema::hasTable('admins') || !Schema::hasTable('users')) {
+        fwrite(STDERR, "Owner credential refresh skipped because auth tables are missing.\n");
+    } else {
+        $adminUpdated = DB::table('admins')
+            ->where('email', 'admin@yellowduck.app')
+            ->update([
+                'password' => $adminHash,
+                'status' => 'active',
+                'remember_token' => null,
+                'updated_at' => $now,
+            ]);
+
+        $userUpdated = DB::table('users')
+            ->where('email', 'user@yellowduck.app')
+            ->update([
+                'password' => $userHash,
+                'status' => 'active',
+                'email_verified_at' => $now,
+                'remember_token' => null,
+                'updated_at' => $now,
+            ]);
+
+        $ownerReset = $adminUpdated > 0 && $userUpdated > 0;
+        fwrite(STDOUT, $ownerReset
+            ? "Owner account credentials refreshed successfully.\n"
+            : "Owner credential refresh incomplete: expected accounts were not found.\n");
+    }
+}
+
+fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}; OwnerReset=" . ($ownerReset ? 'yes' : 'no') . "\n");
 exit(0);
