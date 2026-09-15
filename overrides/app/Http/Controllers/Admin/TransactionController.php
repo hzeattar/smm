@@ -20,7 +20,9 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         $isAdmin = Gate::allows('isAdmin');
-        $query = Transaction::with(['paymentMethod', 'user'])->orderBy('created_at', 'desc');
+        $query = Transaction::with(['paymentMethod', 'user'])
+            ->where('transaction_id', 'not like', 'SMOKE-%')
+            ->orderBy('created_at', 'desc');
         if (!$isAdmin) {
             $query->where('user_id', Auth::id());
         }
@@ -60,7 +62,9 @@ class TransactionController extends Controller
 
     public function show($id)
     {
-        $query = Transaction::with(['paymentMethod', 'user'])->where('id', $id);
+        $query = Transaction::with(['paymentMethod', 'user'])
+            ->where('transaction_id', 'not like', 'SMOKE-%')
+            ->where('id', $id);
         if (!Gate::allows('isAdmin')) {
             $query->where('user_id', Auth::id());
         }
@@ -71,7 +75,7 @@ class TransactionController extends Controller
     public function proof($id)
     {
         abort_unless(Gate::allows('isAdmin'), 403);
-        $transaction = Transaction::where('id', $id)->firstOrFail();
+        $transaction = Transaction::where('transaction_id', 'not like', 'SMOKE-%')->where('id', $id)->firstOrFail();
         abort_unless(Schema::hasTable('yellow_duck_deposit_proofs'), 404);
 
         $proof = DB::table('yellow_duck_deposit_proofs')
@@ -111,7 +115,11 @@ class TransactionController extends Controller
         ]);
 
         $fresh = DB::transaction(function () use ($id, $data) {
-            $transaction = Transaction::with('user')->where('id', $id)->lockForUpdate()->firstOrFail();
+            $transaction = Transaction::with('user')
+                ->where('transaction_id', 'not like', 'SMOKE-%')
+                ->where('id', $id)
+                ->lockForUpdate()
+                ->firstOrFail();
             $oldStatus = $transaction->status;
             $newStatus = $data['status'];
 
@@ -151,7 +159,7 @@ class TransactionController extends Controller
     public function destroy($id)
     {
         abort_unless(Gate::allows('isAdmin'), 403);
-        $transaction = Transaction::where('id', $id)->firstOrFail();
+        $transaction = Transaction::where('transaction_id', 'not like', 'SMOKE-%')->where('id', $id)->firstOrFail();
         if ($transaction->status === 'paid') {
             return response()->json(['message' => 'لا يمكن حذف معاملة مدفوعة حفاظًا على سجل الرصيد.'], 422);
         }
