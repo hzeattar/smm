@@ -64,9 +64,10 @@ php artisan view:clear || true
 
 write_health() {
   local state="$1"
-  cat > public/boot-health.json <<EOF
-{"service":"yellow-duck-smm","state":"${state}","db_host_configured":$([ -n "${DB_HOST:-}" ] && echo true || echo false),"db_name_configured":$([ -n "${DB_DATABASE:-}" ] && echo true || echo false)}
-EOF
+  local body
+  body="{\"service\":\"yellow-duck-smm\",\"state\":\"${state}\",\"db_host_configured\":$([ -n "${DB_HOST:-}" ] && echo true || echo false),\"db_name_configured\":$([ -n "${DB_DATABASE:-}" ] && echo true || echo false)}"
+  printf '%s\n' "$body" > public/boot-health.json
+  printf '%s\n' "$body" > public/boot_health
 }
 
 pdo_test() {
