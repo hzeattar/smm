@@ -6,6 +6,7 @@
         $methods = $paymentMethods instanceof \Illuminate\Support\Collection ? $paymentMethods : collect($paymentMethods);
         $selected = $methods->firstWhere('name', 'Vodafone Cash') ?: $methods->first();
         $vodafoneNumber = '01205323440';
+        $instapayAccount = 'menna_206@instapay';
         $exchangeRate = \App\Support\YellowDuckMoney::exchangeRate();
         $instapayQrData = '';
         $instapayQrDataPath = public_path('images/instapay-qr-data.txt');
@@ -59,6 +60,7 @@
                         $isInstapay = stripos($lowerName, 'instapay') !== false || stripos($lowerName, 'insta') !== false;
                         $qrValue = trim((string) $method->api_key);
                         $showImageQr = $qrValue && preg_match('/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i', $qrValue);
+                        $destination = $isVodafone ? $vodafoneNumber : ($isInstapay ? $instapayAccount : trim((string) $method->private_key));
                     @endphp
                     <article class="yd-payment-panel {{ $selected && $method->id === $selected->id ? 'active' : '' }}" data-panel="{{ $method->id }}">
                         <div class="yd-payment-head">
@@ -89,10 +91,14 @@
                                         </div>
                                     @endif
                                 </div>
+                                <div class="yd-wallet-number yd-instapay-destination">
+                                    <small>حساب InstaPay</small>
+                                    <strong>{{ $instapayAccount }}</strong>
+                                </div>
                                 @if($qrValue && !$showImageQr)
                                     <a class="yd-payment-link" href="{{ $qrValue }}" target="_blank" rel="noopener">فتح رابط InstaPay</a>
                                 @endif
-                                <p>{{ $method->client_id ?: 'استخدم QR أو رابط إنستا باي، ثم اكتب بيانات التحويل قبل الإرسال.' }}</p>
+                                <p>{{ $method->client_id ?: 'استخدم QR أو حوّل إلى حساب إنستا باي الموضح، ثم اكتب بيانات التحويل قبل الإرسال.' }}</p>
                             @else
                                 <p>{{ $method->client_id ?: 'نفذ التحويل بالطريقة المختارة ثم أرسل بيانات العملية للمراجعة.' }}</p>
                             @endif
@@ -105,18 +111,40 @@
                             </ul>
                         </div>
 
-                        <form class="yd-manual-payment-form" action="{{ url('/user/add-funds/manual') }}" method="post">
+                        <form class="yd-manual-payment-form" action="{{ url('/user/add-funds/manual') }}" method="post" enctype="multipart/form-data">
                             @csrf
                             <input type="hidden" name="method_id" value="{{ $method->id }}">
-                            <label>
-                                <span>رقم الهاتف الذي تم التحويل منه</span>
-                                <input name="sender_phone" value="{{ old('sender_phone') }}" placeholder="مثال: 01000000000" required>
+
+                            <div class="yd-manual-fields">
+                                <label>
+                                    <span>رقم الهاتف الذي تم التحويل منه</span>
+                                    <input type="text" inputmode="tel" name="sender_phone" value="{{ old('sender_phone') }}" placeholder="مثال: 01000000000" required>
+                                </label>
+                                <label>
+                                    <span>المبلغ بالجنيه المصري</span>
+                                    <input class="yd-egp-amount" name="amount" type="number" step="0.01" min="{{ $method->min }}" max="{{ $method->max }}" value="{{ old('amount') }}" placeholder="0.00" required>
+                                    <small class="yd-credit-preview" data-rate="{{ $exchangeRate }}">سيُضاف إلى رصيدك $0.0000 بعد الاعتماد</small>
+                                </label>
+                            </div>
+
+                            <label class="yd-proof-field">
+                                <span>صورة إثبات التحويل</span>
+                                <div class="yd-proof-upload">
+                                    <input class="yd-proof-input" type="file" name="proof" accept="image/jpeg,image/png,image/webp" required>
+                                    <div class="yd-proof-copy">
+                                        <i class="fa fa-image"></i>
+                                        <strong>اختر صورة إيصال التحويل</strong>
+                                        <small>JPG أو PNG أو WEBP — بحد أقصى 5MB</small>
+                                    </div>
+                                    <span class="yd-proof-filename">لم يتم اختيار صورة بعد</span>
+                                </div>
                             </label>
-                            <label>
-                                <span>المبلغ بالجنيه المصري</span>
-                                <input class="yd-egp-amount" name="amount" type="number" step="0.01" min="{{ $method->min }}" max="{{ $method->max }}" value="{{ old('amount') }}" required>
-                                <small class="yd-credit-preview" data-rate="{{ $exchangeRate }}">سيُضاف إلى رصيدك $0.0000 بعد الاعتماد</small>
-                            </label>
+
+                            <div class="yd-payment-review-note">
+                                <i class="fa fa-shield-alt"></i>
+                                سيتم إرسال الطريقة والمبلغ والرقم وصورة الإثبات إلى الأدمن للمراجعة قبل إضافة الرصيد.
+                            </div>
+
                             <button type="submit">
                                 <i class="fa fa-paper-plane"></i>
                                 إرسال طلب الإيداع
@@ -128,16 +156,37 @@
 
             <aside class="yd-funds-help">
                 <h2>مهم قبل الإيداع</h2>
-                <p>لا يتم إضافة الرصيد تلقائيًا للطرق اليدوية. الأدمن يراجع العملية من صفحة المعاملات ثم يعتمدها.</p>
+                <p>لا يتم إضافة الرصيد تلقائيًا للطرق اليدوية. الأدمن يراجع العملية وصورة الإثبات ثم يعتمدها.</p>
                 <ul>
                     <li>اكتب نفس الرقم الذي تم التحويل منه.</li>
                     <li>أدخل المبلغ كما حولته بدون تقريب.</li>
-                    <li>لو استخدمت إنستا باي، احتفظ بصورة إيصال التحويل.</li>
+                    <li>ارفق لقطة واضحة لإيصال التحويل.</li>
+                    <li>سيظهر للأدمن الحساب الذي تم التحويل إليه للمطابقة.</li>
                 </ul>
             </aside>
         </section>
     @endif
 </main>
+
+<style>
+.yd-manual-payment-form{display:grid;gap:16px;margin-top:18px}
+.yd-manual-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.yd-manual-payment-form label{display:grid;gap:8px;margin:0;min-width:0;color:#343a45;font-weight:850}
+.yd-manual-payment-form label>span{font-size:13px}
+.yd-manual-fields input{box-sizing:border-box;width:100%;height:56px;min-height:56px;padding:0 15px;border:1px solid #dfe3ea;border-radius:10px;background:#fff;color:#17191f;font:inherit;line-height:56px}
+.yd-manual-fields input:focus,.yd-proof-upload:focus-within{outline:0;border-color:#f7c51e;box-shadow:0 0 0 3px rgba(247,197,30,.16)}
+.yd-credit-preview{display:block;min-height:18px;color:#8a6500;font-size:12px;font-weight:800}
+.yd-proof-field{grid-column:1/-1}
+.yd-proof-upload{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;min-height:92px;padding:14px 16px;border:1px dashed #cfd5de;border-radius:10px;background:#fafbfc;overflow:hidden}
+.yd-proof-input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2}
+.yd-proof-copy{display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:12px;align-items:center}
+.yd-proof-copy i{grid-row:1/3;width:42px;height:42px;display:grid;place-items:center;border-radius:9px;background:#f7c51e;color:#17191f;font-size:18px}
+.yd-proof-copy strong{font-size:14px}.yd-proof-copy small{color:#68707e;font-size:11px}
+.yd-proof-filename{max-width:260px;padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #e4e8ee;color:#68707e;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yd-payment-review-note{display:flex;align-items:flex-start;gap:8px;padding:12px 14px;border-radius:10px;background:#fff8d9;border:1px solid #f4df83;color:#66520c;font-size:12px;font-weight:800;line-height:1.7}
+.yd-instapay-destination{margin-top:12px}
+@media(max-width:767px){.yd-manual-fields{grid-template-columns:1fr}.yd-proof-upload{grid-template-columns:1fr}.yd-proof-filename{max-width:100%}}
+</style>
 @endsection
 
 @section('scripts')
@@ -164,6 +213,13 @@
         };
         input.addEventListener('input', updatePreview);
         updatePreview();
+    });
+
+    document.querySelectorAll('.yd-proof-input').forEach(function (input) {
+        input.addEventListener('change', function () {
+            var holder = input.closest('.yd-proof-upload').querySelector('.yd-proof-filename');
+            holder.textContent = input.files && input.files[0] ? input.files[0].name : 'لم يتم اختيار صورة بعد';
+        });
     });
 })();
 </script>
