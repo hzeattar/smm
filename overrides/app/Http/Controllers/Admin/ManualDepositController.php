@@ -18,44 +18,53 @@ class ManualDepositController extends Controller
 {
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'method_id' => 'required|integer|exists:payment_methods,id',
-            'amount' => 'required|numeric|min:1',
-            'sender_phone' => ['required', 'string', 'max:80', 'regex:/^[0-9+\s-]{7,25}$/'],
-            'proof' => 'required|file|mimes:jpg,jpeg,png,webp|max:5120',
-        ], [
-            'sender_phone.regex' => 'اكتب رقم الهاتف الذي تم التحويل منه بشكل صحيح.',
-            'proof.required' => 'يرجى إرفاق صورة إثبات التحويل.',
-            'proof.mimes' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.',
-            'proof.max' => 'حجم صورة إثبات التحويل يجب ألا يتجاوز 5 ميجابايت.',
-        ]);
-
-        if ($validator->fails()) {
-            return back()->withErrors($validator)->withInput();
-        }
-
         try {
-            $method = PaymentMethod::where('id', $request->integer('method_id'))
-                ->where('status', 'active')
-                ->firstOrFail();
+            $validator = Validator::make($request->all(), [
+                'method_id' => 'required|integer|exists:payment_methods,id',
+                'amount' => 'required|numeric|min:1',
+                'sender_phone' => ['required', 'string', 'max:80', 'regex:/^[0-9+\s-]{7,25}$/'],
+                'proof' => 'required|file|max:5120',
+            ], [
+                'sender_phone.regex' => 'اكتب رقم الهاتف الذي تم التحويل منه بشكل صحيح.',
+                'proof.required' => 'يرجى إرفاق صورة إثبات التحويل.',
+                'proof.file' => 'ملف إثبات التحويل غير صالح.',
+                'proof.max' => 'حجم صورة إثبات التحويل يجب ألا يتجاوز 5 ميجابايت.',
+            ]);
 
-            if (!$this->isManualPaymentMethod($method)) {
-                return back()->withErrors(['method_id' => 'طريقة الدفع المختارة غير صالحة للإيداع اليدوي.'])->withInput();
+            if ($validator->fails()) {
+                return redirect()->route('user.add-funds')->withErrors($validator)->withInput($request->except('proof'));
+            }
+
+            $method = PaymentMethod::where('id', (int) $request->input('method_id'))
+                ->where('status', 'active')
+                ->first();
+
+            if (!$method || !$this->isManualPaymentMethod($method)) {
+                return redirect()->route('user.add-funds')
+                    ->withErrors(['method_id' => 'طريقة الدفع المختارة غير متاحة. استخدم فودافون كاش أو InstaPay.'])
+                    ->withInput($request->except('proof'));
             }
 
             $amount = round((float) $request->input('amount'), 2);
             if ($amount < (float) $method->min || ((float) $method->max > 0 && $amount > (float) $method->max)) {
-                return back()->withErrors(['amount' => 'المبلغ خارج حدود طريقة الدفع المختارة.'])->withInput();
+                return redirect()->route('user.add-funds')->withErrors(['amount' => 'المبلغ خارج حدود طريقة الدفع المختارة.'])->withInput($request->except('proof'));
             }
 
             $proof = $request->file('proof');
             if (!$proof || !$proof->isValid()) {
-                return back()->withErrors(['proof' => 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.'])->withInput();
+                return redirect()->route('user.add-funds')->withErrors(['proof' => 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.'])->withInput($request->except('proof'));
             }
 
-            [$proofMime, $proofBytes] = $this->normaliseProof($proof->getPathname(), (string) $proof->getMimeType());
+            $path = (string) $proof->getPathname();
+            $imageInfo = @getimagesize($path);
+            $detectedMime = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
+            if (!in_array($detectedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+                return redirect()->route('user.add-funds')->withErrors(['proof' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.'])->withInput($request->except('proof'));
+            }
+
+            [$proofMime, $proofBytes] = $this->normaliseProof($path, $detectedMime);
             if ($proofBytes === '' || strlen($proofBytes) > 6 * 1024 * 1024) {
-                return back()->withErrors(['proof' => 'تعذر تجهيز صورة الإثبات أو حجمها كبير جدًا. استخدم لقطة شاشة واضحة أصغر.'])->withInput();
+                return redirect()->route('user.add-funds')->withErrors(['proof' => 'تعذر تجهيز صورة الإثبات أو حجمها كبير جدًا. استخدم صورة أصغر.'])->withInput($request->except('proof'));
             }
 
             $fee = round($amount * ((float) $method->fee / 100), 2);
@@ -70,7 +79,7 @@ class ManualDepositController extends Controller
             DB::transaction(function () use ($method, $amount, $fee, $credit, $rate, $destination, $senderPhone, $proofName, $proofMime, $proofBytes) {
                 $transaction = new Transaction();
                 $transaction->method_id = $method->id;
-                $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id() . '-' . strtoupper(bin2hex(random_bytes(2)));
+                $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id() . '-' . strtoupper(bin2hex(random_bytes(3)));
                 $transaction->user_id = Auth::id();
                 $transaction->amount = $amount;
                 $transaction->fee = 0;
@@ -90,8 +99,6 @@ class ManualDepositController extends Controller
                 ]));
                 $transaction->save();
 
-                // Store ASCII-safe base64 instead of binding raw image bytes through PDO.
-                // This avoids driver/encoding edge cases while keeping proof persistent in MySQL.
                 DB::table('yellow_duck_deposit_proofs')->insert([
                     'transaction_id' => $transaction->id,
                     'mime' => $proofMime,
@@ -102,22 +109,24 @@ class ManualDepositController extends Controller
                 ]);
             }, 3);
 
-            return redirect()
-                ->route('user.transactions.index')
+            return redirect()->route('user.transactions.index')
                 ->with('success', 'تم إرسال طلب الإيداع وصورة الإثبات بنجاح. سيتم إضافة الرصيد بعد مراجعة الأدمن.');
         } catch (Throwable $e) {
-            report($e);
-            Log::error('Manual deposit submission failed', [
-                'user_id' => Auth::id(),
-                'method_id' => $request->input('method_id'),
-                'amount' => $request->input('amount'),
-                'exception' => get_class($e),
-                'message' => $e->getMessage(),
-            ]);
+            try {
+                Log::error('Manual deposit submission failed', [
+                    'user_id' => Auth::id(),
+                    'method_id' => $request->input('method_id'),
+                    'amount' => $request->input('amount'),
+                    'exception' => get_class($e),
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+            } catch (Throwable $ignored) {
+            }
 
-            return back()
-                ->withErrors(['deposit' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى بعد لحظات.'])
-                ->withInput();
+            return redirect()->route('user.add-funds')
+                ->withErrors(['deposit' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى بعد لحظات.']);
         }
     }
 
@@ -150,6 +159,11 @@ class ManualDepositController extends Controller
         $targetHeight = max(1, (int) round($height * $scale));
 
         $target = imagecreatetruecolor($targetWidth, $targetHeight);
+        if (!$target) {
+            imagedestroy($source);
+            return [$mime ?: 'image/jpeg', $raw];
+        }
+
         $white = imagecolorallocate($target, 255, 255, 255);
         imagefill($target, 0, 0, $white);
         imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
