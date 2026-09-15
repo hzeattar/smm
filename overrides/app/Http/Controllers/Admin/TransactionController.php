@@ -80,6 +80,13 @@ class TransactionController extends Controller
         abort_unless($proof, 404);
 
         $mime = (string) ($proof->mime ?: 'image/jpeg');
+        $payload = (string) $proof->data;
+        if (str_starts_with($payload, 'base64:')) {
+            $decoded = base64_decode(substr($payload, 7), true);
+            abort_if($decoded === false || $decoded === '', 422, 'تعذر قراءة صورة إثبات التحويل.');
+            $payload = $decoded;
+        }
+
         $extensions = [
             'image/png' => 'png',
             'image/webp' => 'webp',
@@ -88,10 +95,11 @@ class TransactionController extends Controller
         ];
         $extension = $extensions[$mime] ?? 'jpg';
 
-        return response($proof->data, 200)
+        return response($payload, 200)
             ->header('Content-Type', $mime)
             ->header('Content-Disposition', 'inline; filename="deposit-proof-' . $transaction->id . '.' . $extension . '"')
-            ->header('Cache-Control', 'private, max-age=300');
+            ->header('Cache-Control', 'private, max-age=300')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     public function update(Request $request, $id)
