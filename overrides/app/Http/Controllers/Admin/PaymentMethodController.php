@@ -18,19 +18,27 @@ class PaymentMethodController extends Controller
 
     public function index(Request $request)
     {
-        $conditions = !Gate::allows('isAdmin') ? [['status', '=', 'active']] : [];
-        $paymentMethods = PaymentMethod::where($conditions)->orderBy('id', 'desc')->paginate();
+        $query = PaymentMethod::query()->where(function ($builder) {
+            $builder->where('name', 'like', '%Vodafone%')
+                ->orWhere('name', 'like', '%InstaPay%')
+                ->orWhere('name', 'like', '%Insta Pay%');
+        });
+
+        if (!Gate::allows('isAdmin')) {
+            $query->where('status', 'active');
+        }
+
+        if ($request->filled('search')) {
+            $search = '%' . $request->input('search') . '%';
+            $query->where(function ($builder) use ($search) {
+                $builder->where('name', 'like', $search)
+                    ->orWhere('client_id', 'like', $search);
+            });
+        }
+
+        $paymentMethods = $query->orderBy('id', 'desc')->paginate();
 
         if ($request->api) {
-            if (isset($request->search)) {
-                $paymentMethods = $this->filter([
-                    'conditions' => $conditions,
-                    'table' => 'payment_methods',
-                    'class' => PaymentMethod::class,
-                    'search' => $request->search,
-                ]);
-            }
-
             return response()->json($paymentMethods, 200);
         }
 
