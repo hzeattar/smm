@@ -35,18 +35,28 @@ foreach ($requiredTables as $table) {
 }
 
 $userId = DB::table('users')->orderBy('id')->value('id');
-$methodId = DB::table('payment_methods')->orderBy('id')->value('id');
+$methodId = DB::table('payment_methods')
+    ->where('status', 'active')
+    ->where(function ($query) {
+        $query->where('name', 'like', '%Vodafone%')
+            ->orWhere('name', 'like', '%InstaPay%')
+            ->orWhere('name', 'like', '%Insta Pay%');
+    })
+    ->orderBy('id')
+    ->value('id');
+
 if (!$userId || !$methodId) {
-    fwrite(STDOUT, "Critical smoke check skipped DB write test: no user/payment method yet.\n");
+    fwrite(STDOUT, "Critical smoke check skipped DB write test: no user/manual payment method yet.\n");
     exit(0);
 }
 
-try {
-    DB::beginTransaction();
+$transactionId = null;
+$smokeReference = 'SMOKE-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
 
+try {
     $transactionId = DB::table('transactions')->insertGetId([
         'method_id' => $methodId,
-        'transaction_id' => 'SMOKE-' . date('YmdHis') . '-' . bin2hex(random_bytes(2)),
+        'transaction_id' => $smokeReference,
         'user_id' => $userId,
         'amount' => 55,
         'fee' => 0,
@@ -73,13 +83,18 @@ try {
         throw new RuntimeException('Proof persistence verification failed.');
     }
 
-    DB::rollBack();
     fwrite(STDOUT, "Critical smoke checks OK: routes, schema, transaction and proof persistence.\n");
-    exit(0);
 } catch (Throwable $e) {
-    if (DB::transactionLevel() > 0) {
-        DB::rollBack();
-    }
     fwrite(STDERR, "Critical smoke check failed: " . $e->getMessage() . "\n");
-    exit(83);
+    $exitCode = 83;
+} finally {
+    // Do not rely on SQL rollback: the legacy source schema can contain non-transactional tables.
+    if ($transactionId) {
+        DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $transactionId)->delete();
+        DB::table('transactions')->where('id', $transactionId)->delete();
+    } else {
+        DB::table('transactions')->where('transaction_id', $smokeReference)->delete();
+    }
 }
+
+exit($exitCode ?? 0);
