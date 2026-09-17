@@ -39,6 +39,22 @@ DB::statement("CREATE TABLE IF NOT EXISTS `yellow_duck_deposit_proofs` (
     UNIQUE KEY `yd_deposit_proofs_transaction_unique` (`transaction_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+// CREATE TABLE IF NOT EXISTS does not upgrade an older table. Explicitly verify
+// that production has a binary column large enough for real 1-5 MB receipts.
+$proofColumn = DB::selectOne(
+    "SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'yellow_duck_deposit_proofs'
+       AND COLUMN_NAME = 'data'
+     LIMIT 1"
+);
+$proofDataType = strtolower((string) ($proofColumn->data_type ?? ''));
+if (!in_array($proofDataType, ['mediumblob', 'longblob'], true)) {
+    DB::statement("ALTER TABLE `yellow_duck_deposit_proofs` MODIFY COLUMN `data` MEDIUMBLOB NOT NULL");
+    $proofDataType = 'mediumblob';
+}
+
 $defaults = [
     [
         'name' => 'Vodafone Cash',
@@ -135,5 +151,5 @@ if ($resetFlag === 'true') {
     }
 }
 
-fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}; ProofTable=yes; OwnerReset=" . ($ownerReset ? 'yes' : 'no') . "\n");
+fwrite(STDOUT, "Yellow Duck payment bootstrap complete. Created={$created}; ProofTable=yes; ProofData={$proofDataType}; OwnerReset=" . ($ownerReset ? 'yes' : 'no') . "\n");
 exit(0);
