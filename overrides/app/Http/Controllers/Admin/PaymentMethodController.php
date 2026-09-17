@@ -38,6 +38,12 @@ class PaymentMethodController extends Controller
 
         $paymentMethods = $query->orderBy('id', 'desc')->paginate();
 
+        if (!Gate::allows('isAdmin')) {
+            collect($paymentMethods->items())->each(function ($method) {
+                $method->makeHidden(['api_key', 'private_key', 'environment']);
+            });
+        }
+
         if ($request->api) {
             return response()->json($paymentMethods, 200);
         }
@@ -47,6 +53,8 @@ class PaymentMethodController extends Controller
 
     public function store(Request $request)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
+
         if ($request->has('exchange_rate') && !$request->filled('name')) {
             $data = $request->validate(['exchange_rate' => 'required|numeric|min:1|max:1000']);
             Setting::updateOrCreate(
@@ -63,17 +71,38 @@ class PaymentMethodController extends Controller
 
     public function show($id)
     {
-        $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
         if (Auth::guard('admin')->check()) {
+            $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
             $paymentMethod->makeVisible(['api_key', 'private_key', 'client_id', 'environment']);
-        } else {
-            $paymentMethod->makeVisible(['api_key', 'client_id', 'environment']);
+            return response()->json($paymentMethod, 200);
         }
-        return response()->json($paymentMethod, 200);
+
+        $paymentMethod = PaymentMethod::where('id', $id)
+            ->where('status', 'active')
+            ->where(function ($builder) {
+                $builder->where('name', 'like', '%Vodafone%')
+                    ->orWhere('name', 'like', '%InstaPay%')
+                    ->orWhere('name', 'like', '%Insta Pay%');
+            })
+            ->firstOrFail();
+
+        // Customers only receive fields required to display/manual-pay through the method.
+        // Gateway credentials and environment/private data are never serialized to customer routes.
+        return response()->json([
+            'id' => $paymentMethod->id,
+            'name' => $paymentMethod->name,
+            'min' => $paymentMethod->min,
+            'max' => $paymentMethod->max,
+            'fee' => $paymentMethod->fee,
+            'status' => $paymentMethod->status,
+            'client_id' => $paymentMethod->client_id,
+            'image' => $paymentMethod->image,
+        ], 200);
     }
 
     public function update(Request $request, $id)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
         $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
         $paymentMethod->update($this->validatedPayload($request, false));
         $paymentMethod->makeVisible(['api_key', 'private_key', 'client_id', 'environment']);
@@ -82,6 +111,7 @@ class PaymentMethodController extends Controller
 
     public function destroy($id)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
         $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
         $deleted = $paymentMethod->delete();
         return response()->json($deleted, 200);
@@ -105,8 +135,7 @@ class PaymentMethodController extends Controller
         $validator = Validator::make($request->all(), $rules);
         $validator->validate();
 
-        return [
-            'name' => $request->input('name'),
+        $payload = [
             'min' => (int) $request->input('min', 0),
             'max' => (int) $request->input('max', 100000),
             'fee' => (float) $request->input('fee', 0),
@@ -117,5 +146,11 @@ class PaymentMethodController extends Controller
             'client_id' => $request->input('client_id'),
             'image' => $request->input('image') ?: 'payment-manual.svg',
         ];
+
+        if ($requireName || $request->has('name')) {
+            $payload['name'] = $request->input('name');
+        }
+
+        return $payload;
     }
 }
