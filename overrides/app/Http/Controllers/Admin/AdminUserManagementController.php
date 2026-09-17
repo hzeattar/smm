@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -58,35 +59,54 @@ class AdminUserManagementController extends Controller
             'password' => ['nullable', 'string', 'min:8', 'max:190', 'confirmed'],
         ]);
 
-        $before = [
-            'username' => (string) $user->username,
-            'firstname' => (string) $user->firstname,
-            'lastname' => (string) $user->lastname,
-            'email' => (string) $user->email,
-            'status' => (string) $user->status,
-        ];
+        $this->ensureAuditTable();
 
-        $user->username = $validated['username'];
-        $user->firstname = $validated['firstname'];
-        $user->lastname = $validated['lastname'];
-        $user->email = $validated['email'];
-        $user->status = $validated['status'];
-        if (!empty($validated['password'])) {
-            $user->password = Hash::make($validated['password']);
+        try {
+            DB::transaction(function () use ($id, $validated) {
+                $locked = User::where('id', (int) $id)->lockForUpdate()->firstOrFail();
+                $before = [
+                    'username' => (string) $locked->username,
+                    'firstname' => (string) $locked->firstname,
+                    'lastname' => (string) $locked->lastname,
+                    'email' => (string) $locked->email,
+                    'status' => (string) $locked->status,
+                ];
+
+                $locked->username = $validated['username'];
+                $locked->firstname = $validated['firstname'];
+                $locked->lastname = $validated['lastname'];
+                $locked->email = $validated['email'];
+                $locked->status = $validated['status'];
+                if (!empty($validated['password'])) {
+                    $locked->password = Hash::make($validated['password']);
+                }
+                $locked->save();
+
+                if (Schema::hasTable('sessions') && ($validated['status'] === 'deactive' || !empty($validated['password']))) {
+                    DB::table('sessions')->where('user_id', $locked->id)->delete();
+                }
+
+                $this->audit($locked->id, 'profile_updated', [
+                    'before' => $before,
+                    'after' => [
+                        'username' => (string) $locked->username,
+                        'firstname' => (string) $locked->firstname,
+                        'lastname' => (string) $locked->lastname,
+                        'email' => (string) $locked->email,
+                        'status' => (string) $locked->status,
+                    ],
+                    'password_changed' => !empty($validated['password']),
+                    'sessions_revoked' => $validated['status'] === 'deactive' || !empty($validated['password']),
+                ]);
+            }, 1);
+        } catch (Throwable $e) {
+            Log::error('Admin user profile update failed', [
+                'user_id' => (int) $id,
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+            ]);
+            return back()->withErrors(['profile' => 'تعذر تحديث بيانات العميل. لم يتم حفظ تغيير جزئي.'])->withInput();
         }
-        $user->save();
-
-        $this->audit($user->id, 'profile_updated', [
-            'before' => $before,
-            'after' => [
-                'username' => (string) $user->username,
-                'firstname' => (string) $user->firstname,
-                'lastname' => (string) $user->lastname,
-                'email' => (string) $user->email,
-                'status' => (string) $user->status,
-            ],
-            'password_changed' => !empty($validated['password']),
-        ]);
 
         return back()->with('success', 'تم تحديث بيانات العميل بنجاح.');
     }
@@ -102,6 +122,7 @@ class AdminUserManagementController extends Controller
         $amount = round((float) $validated['amount'], 4);
         $isCredit = $validated['action'] === 'credit';
         $admin = Auth::guard('admin')->user();
+        $this->ensureAuditTable();
 
         try {
             DB::transaction(function () use ($id, $validated, $amount, $isCredit, $admin) {
@@ -115,8 +136,10 @@ class AdminUserManagementController extends Controller
                 }
 
                 $after = round($before + ($isCredit ? $amount : -$amount), 4);
-                $user->funds = $after;
-                $user->save();
+                DB::table('users')->where('id', $user->id)->update([
+                    'funds' => $after,
+                    'updated_at' => now()->format('Y-m-d H:i:s'),
+                ]);
 
                 $method = PaymentMethod::firstOrCreate(
                     ['name' => 'Admin Balance Adjustment'],
@@ -187,6 +210,7 @@ class AdminUserManagementController extends Controller
     public function createOrder(Request $request, $id)
     {
         $user = User::findOrFail((int) $id);
+        $this->ensureAuditTable();
 
         $request->merge([
             'user_id' => $user->id,
@@ -208,9 +232,9 @@ class AdminUserManagementController extends Controller
 
         $status = method_exists($response, 'getStatusCode') ? (int) $response->getStatusCode() : 500;
         $payload = method_exists($response, 'getData') ? $response->getData(true) : [];
+        $orderId = is_array($payload) ? ($payload['id'] ?? $payload['order_id'] ?? null) : null;
 
         if ($status >= 200 && $status < 300) {
-            $orderId = is_array($payload) ? ($payload['id'] ?? null) : null;
             if ($orderId) {
                 $this->audit($user->id, 'order_created', [
                     'order_id' => (int) $orderId,
@@ -220,6 +244,13 @@ class AdminUserManagementController extends Controller
                 ]);
             }
             return back()->with('success', 'تم إنشاء الطلب للعميل وخصم تكلفته من رصيده بنجاح.' . ($orderId ? ' رقم الطلب: #' . $orderId : ''));
+        }
+
+        if ($orderId && $status === 503) {
+            $this->audit($user->id, 'order_provider_result_ambiguous', [
+                'order_id' => (int) $orderId,
+                'service_id' => (int) $request->input('service_id'),
+            ]);
         }
 
         $message = is_array($payload) && !empty($payload['message'])
@@ -259,6 +290,10 @@ class AdminUserManagementController extends Controller
 
     private function ensureAuditTable(): void
     {
+        if (Schema::hasTable('yellow_duck_admin_user_audits')) {
+            return;
+        }
+
         DB::statement("CREATE TABLE IF NOT EXISTS `yellow_duck_admin_user_audits` (
             `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             `admin_id` BIGINT UNSIGNED NULL,
@@ -274,8 +309,6 @@ class AdminUserManagementController extends Controller
 
     private function audit(int $userId, string $action, array $payload = []): void
     {
-        $this->ensureAuditTable();
-
         DB::table('yellow_duck_admin_user_audits')->insert([
             'admin_id' => Auth::guard('admin')->id(),
             'user_id' => $userId,
