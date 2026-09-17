@@ -126,6 +126,10 @@ if [ "${SESSION_DRIVER}" = "database" ] && [ -f scripts/ensure-session-table.php
   php scripts/ensure-session-table.php
 fi
 
+if [ -f scripts/ensure-ticket-attachments.php ]; then
+  php scripts/ensure-ticket-attachments.php
+fi
+
 touch storage/installed
 chown www-data:www-data storage/installed
 
