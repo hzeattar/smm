@@ -31,12 +31,14 @@ class ManualDepositController extends Controller
             ]);
 
             if ($validator->fails()) {
-                return redirect()->route('user.add-funds')->withErrors($validator)->withInput($request->except('proof'));
+                return response()->view('admin.deposit_failed', [
+                    'message' => implode(' ', $validator->errors()->all()),
+                ], 422);
             }
 
             $userId = (int) Auth::id();
             if ($userId <= 0) {
-                return redirect()->route('login')->withErrors(['deposit' => 'انتهت جلسة الدخول. سجّل الدخول ثم أعد المحاولة.']);
+                return redirect()->route('login');
             }
 
             $method = PaymentMethod::where('id', (int) $request->input('method_id'))
@@ -44,31 +46,39 @@ class ManualDepositController extends Controller
                 ->first();
 
             if (!$method || !$this->isManualPaymentMethod($method)) {
-                return redirect()->route('user.add-funds')
-                    ->withErrors(['method_id' => 'طريقة الدفع المختارة غير متاحة. استخدم فودافون كاش أو InstaPay.'])
-                    ->withInput($request->except('proof'));
+                return response()->view('admin.deposit_failed', [
+                    'message' => 'طريقة الدفع المختارة غير متاحة. استخدم فودافون كاش أو InstaPay.',
+                ], 422);
             }
 
             $amount = round((float) $request->input('amount'), 2);
             if ($amount < (float) $method->min || ((float) $method->max > 0 && $amount > (float) $method->max)) {
-                return redirect()->route('user.add-funds')->withErrors(['amount' => 'المبلغ خارج حدود طريقة الدفع المختارة.'])->withInput($request->except('proof'));
+                return response()->view('admin.deposit_failed', [
+                    'message' => 'المبلغ خارج حدود طريقة الدفع المختارة.',
+                ], 422);
             }
 
             $proof = $request->file('proof');
             if (!$proof || !$proof->isValid()) {
-                return redirect()->route('user.add-funds')->withErrors(['proof' => 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.'])->withInput($request->except('proof'));
+                return response()->view('admin.deposit_failed', [
+                    'message' => 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.',
+                ], 422);
             }
 
             $path = (string) $proof->getPathname();
             $imageInfo = @getimagesize($path);
             $detectedMime = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
             if (!in_array($detectedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
-                return redirect()->route('user.add-funds')->withErrors(['proof' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.'])->withInput($request->except('proof'));
+                return response()->view('admin.deposit_failed', [
+                    'message' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.',
+                ], 422);
             }
 
             [$proofMime, $proofBytes] = $this->normaliseProof($path, $detectedMime);
-            if ($proofBytes === '' || strlen($proofBytes) > 6 * 1024 * 1024) {
-                return redirect()->route('user.add-funds')->withErrors(['proof' => 'تعذر تجهيز صورة الإثبات أو حجمها كبير جدًا. استخدم صورة أصغر.'])->withInput($request->except('proof'));
+            if ($proofBytes === '' || strlen($proofBytes) > 900 * 1024) {
+                return response()->view('admin.deposit_failed', [
+                    'message' => 'تعذر تجهيز صورة الإثبات. جرّب صورة أخرى أو تواصل مع الدعم.',
+                ], 422);
             }
 
             $fee = round($amount * ((float) $method->fee / 100), 2);
@@ -96,9 +106,6 @@ class ManualDepositController extends Controller
             try {
                 DB::beginTransaction();
 
-                // Use the query builder deliberately: the legacy Transaction model has a
-                // "created" observer that sends payment notifications immediately. A manual
-                // deposit is only a review request at this point, not a completed payment.
                 $transactionDbId = (int) DB::table('transactions')->insertGetId([
                     'method_id' => $method->id,
                     'transaction_id' => $reference,
@@ -117,7 +124,7 @@ class ManualDepositController extends Controller
                     'transaction_id' => $transactionDbId,
                     'mime' => $proofMime,
                     'filename' => $proofName,
-                    'data' => 'base64:' . base64_encode($proofBytes),
+                    'data' => $proofBytes,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -129,8 +136,6 @@ class ManualDepositController extends Controller
                 } catch (Throwable $ignored) {
                 }
 
-                // Some tables in the legacy upstream schema may not be transactional.
-                // Explicit cleanup prevents a transaction row without its proof image.
                 if ($transactionDbId) {
                     try {
                         DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $transactionDbId)->delete();
@@ -155,29 +160,33 @@ class ManualDepositController extends Controller
                 'method_id' => $method->id,
                 'amount_egp' => $amount,
                 'credit_usd' => $credit,
+                'proof_bytes' => strlen($proofBytes),
             ]);
 
-            return redirect()->route('user.transactions.index')
-                ->with('deposit_submitted', true)
-                ->with('deposit_reference', $reference)
-                ->with('success', 'تم استلام طلب الإيداع وهو الآن قيد المراجعة. بمجرد التأكد من التحويل سيتم إضافة الرصيد إلى حسابك.');
+            return response()->view('admin.deposit_submitted', [
+                'reference' => $reference,
+            ], 200);
         } catch (Throwable $e) {
+            $diagnostic = [
+                'user_id' => Auth::id(),
+                'method_id' => $request->input('method_id'),
+                'amount' => $request->input('amount'),
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ];
+
             try {
-                Log::error('Manual deposit submission failed', [
-                    'user_id' => Auth::id(),
-                    'method_id' => $request->input('method_id'),
-                    'amount' => $request->input('amount'),
-                    'exception' => get_class($e),
-                    'message' => $e->getMessage(),
-                    'file' => $e->getFile(),
-                    'line' => $e->getLine(),
-                ]);
+                Log::error('Manual deposit submission failed', $diagnostic);
             } catch (Throwable $ignored) {
             }
 
-            return redirect()->route('user.add-funds')
-                ->withErrors(['deposit' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى بعد لحظات أو تواصل مع الدعم.'])
-                ->withInput($request->except('proof'));
+            @error_log('MANUAL_DEPOSIT_ERROR ' . json_encode($diagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+            return response()->view('admin.deposit_failed', [
+                'message' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى، وإذا استمرت المشكلة تواصل مع الدعم عبر واتساب.',
+            ], 500);
         }
     }
 
@@ -189,6 +198,9 @@ class ManualDepositController extends Controller
         }
 
         if (!function_exists('imagecreatefromstring')) {
+            if (strlen($raw) > 900 * 1024) {
+                throw new \RuntimeException('GD unavailable and proof image exceeds safe database size.');
+            }
             return [$mime ?: 'image/jpeg', $raw];
         }
 
@@ -204,7 +216,7 @@ class ManualDepositController extends Controller
             throw new \RuntimeException('Uploaded proof has invalid dimensions.');
         }
 
-        $maxSide = 1600;
+        $maxSide = 1280;
         $scale = min(1, $maxSide / max($width, $height));
         $targetWidth = max(1, (int) round($width * $scale));
         $targetHeight = max(1, (int) round($height * $scale));
@@ -212,21 +224,31 @@ class ManualDepositController extends Controller
         $target = imagecreatetruecolor($targetWidth, $targetHeight);
         if (!$target) {
             imagedestroy($source);
-            return [$mime ?: 'image/jpeg', $raw];
+            throw new \RuntimeException('Could not allocate proof image buffer.');
         }
 
         $white = imagecolorallocate($target, 255, 255, 255);
         imagefill($target, 0, 0, $white);
         imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
 
-        ob_start();
-        imagejpeg($target, null, 84);
-        $jpeg = (string) ob_get_clean();
+        $jpeg = '';
+        foreach ([82, 74, 66, 58, 50] as $quality) {
+            ob_start();
+            imagejpeg($target, null, $quality);
+            $candidate = (string) ob_get_clean();
+            if ($candidate !== '') {
+                $jpeg = $candidate;
+            }
+            if ($candidate !== '' && strlen($candidate) <= 850 * 1024) {
+                break;
+            }
+        }
+
         imagedestroy($target);
         imagedestroy($source);
 
-        if ($jpeg === '') {
-            throw new \RuntimeException('Uploaded proof could not be normalised.');
+        if ($jpeg === '' || strlen($jpeg) > 900 * 1024) {
+            throw new \RuntimeException('Uploaded proof could not be compressed to a safe size.');
         }
 
         return ['image/jpeg', $jpeg];
