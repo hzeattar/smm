@@ -47,6 +47,7 @@ COPY docker/entrypoint.sh /usr/local/bin/railway-entrypoint
 RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && rm -rf vendor \
     && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader \
+    && find /var/www/html/app /var/www/html/routes /var/www/html/scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l \
     && php -r '$p="vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php"; $s=file_get_contents($p); $s2=str_replace("error_reporting(-1);", "error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);", $s, $n); if ($n < 1) { fwrite(STDERR, "Laravel PHP 8.1 compatibility patch target not found\n"); exit(1); } file_put_contents($p, $s2);' \
     && php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); } echo "Composer autoload preflight OK\n";' \
     && chmod +x /usr/local/bin/railway-entrypoint /var/www/html/artisan \

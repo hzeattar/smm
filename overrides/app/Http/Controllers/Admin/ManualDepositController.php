@@ -92,11 +92,14 @@ class ManualDepositController extends Controller
 
             $this->ensureDepositProofTable();
 
-            $transactionDbId = DB::transaction(function () use ($method, $reference, $userId, $amount, $fee, $notes, $proofMime, $proofName, $proofBytes) {
-                // Use the query builder here deliberately: the legacy Transaction model has a
+            $transactionDbId = null;
+            try {
+                DB::beginTransaction();
+
+                // Use the query builder deliberately: the legacy Transaction model has a
                 // "created" observer that sends payment notifications immediately. A manual
                 // deposit is only a review request at this point, not a completed payment.
-                $transactionId = DB::table('transactions')->insertGetId([
+                $transactionDbId = (int) DB::table('transactions')->insertGetId([
                     'method_id' => $method->id,
                     'transaction_id' => $reference,
                     'user_id' => $userId,
@@ -111,7 +114,7 @@ class ManualDepositController extends Controller
                 ]);
 
                 DB::table('yellow_duck_deposit_proofs')->insert([
-                    'transaction_id' => $transactionId,
+                    'transaction_id' => $transactionDbId,
                     'mime' => $proofMime,
                     'filename' => $proofName,
                     'data' => 'base64:' . base64_encode($proofBytes),
@@ -119,8 +122,31 @@ class ManualDepositController extends Controller
                     'updated_at' => now(),
                 ]);
 
-                return (int) $transactionId;
-            }, 1);
+                DB::commit();
+            } catch (Throwable $writeError) {
+                try {
+                    DB::rollBack();
+                } catch (Throwable $ignored) {
+                }
+
+                // Some tables in the legacy upstream schema may not be transactional.
+                // Explicit cleanup prevents a transaction row without its proof image.
+                if ($transactionDbId) {
+                    try {
+                        DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $transactionDbId)->delete();
+                        DB::table('transactions')->where('id', $transactionDbId)->delete();
+                    } catch (Throwable $cleanupError) {
+                        Log::critical('Manual deposit cleanup failed after write error', [
+                            'transaction_id' => $transactionDbId,
+                            'reference' => $reference,
+                            'cleanup_exception' => get_class($cleanupError),
+                            'cleanup_message' => $cleanupError->getMessage(),
+                        ]);
+                    }
+                }
+
+                throw $writeError;
+            }
 
             Log::info('Manual deposit submitted for review', [
                 'transaction_id' => $transactionDbId,

@@ -10,6 +10,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+$requiredClasses = [
+    App\Http\Controllers\Admin\ManualDepositController::class,
+    App\Http\Controllers\Admin\TransactionController::class,
+    App\Observers\TransactionObserver::class,
+    App\Support\YellowDuckMoney::class,
+];
+
+foreach ($requiredClasses as $class) {
+    if (!class_exists($class)) {
+        fwrite(STDERR, "Critical smoke check failed: missing class {$class}.\n");
+        exit(80);
+    }
+}
+
 $requiredRoutes = [
     'user.add-funds',
     'user.manual-deposit',
@@ -83,7 +97,7 @@ try {
         throw new RuntimeException('Proof persistence verification failed.');
     }
 
-    fwrite(STDOUT, "Critical smoke checks OK: routes, schema, transaction and proof persistence.\n");
+    fwrite(STDOUT, "Critical smoke checks OK: classes, routes, schema, transaction and proof persistence.\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "Critical smoke check failed: " . $e->getMessage() . "\n");
     $exitCode = 83;
