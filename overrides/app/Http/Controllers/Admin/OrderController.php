@@ -14,57 +14,99 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Throwable;
 
 class OrderController extends Controller
 {
     use MainTrait;
 
+    private const ORDER_STATUSES = [
+        'pending',
+        'processing',
+        'in progress',
+        'completed',
+        'partial',
+        'refunded',
+        'awaiting',
+        'error',
+    ];
+
+    private const CUSTOMER_SERVICE_HIDDEN_FIELDS = [
+        'api_provider_id',
+        'api_provider_service_id',
+        'api_provider_rate',
+        'api_provider_error',
+        'api_provider_payload',
+    ];
+
     public function index(Request $request)
     {
-        $orders = Order::with(['user','service','service.apiProvider','service.category'])->orderBy('id','desc')->paginate();
+        $isAdmin = Auth::guard('admin')->check();
+        $relations = $isAdmin
+            ? ['user', 'service', 'service.apiProvider', 'service.category']
+            : ['service', 'service.category'];
+
+        $query = Order::with($relations)->orderBy('id', 'desc');
+
+        if (!$isAdmin) {
+            $query->where('user_id', (int) Auth::id());
+        }
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('link', 'like', '%' . $search . '%')
+                    ->orWhere('status', 'like', '%' . $search . '%')
+                    ->orWhere('id', $search);
+            });
+        }
+
+        $orders = $query->paginate();
+        if (!$isAdmin) {
+            collect($orders->items())->each(function ($order) {
+                if ($order->service) {
+                    $order->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+                }
+            });
+        }
+
         $permissions = $this->getPermissions('orders');
 
         if ($request->api) {
-            if (isset($request->search)) {
-                $orders = $this->filter([
-                    'table' => 'orders',
-                    'class' => Order::class,
-                    'tables' => ['users','services','api_providers','categories'],
-                    'with' => ['user','service','service.apiProvider','service.category'],
-                    'search' => $request->search,
-                ]);
-            }
-            return response()->json(compact('permissions','orders'), 200);
+            return response()->json(compact('permissions', 'orders'), 200);
         }
 
-        $categories = Category::where('status','active')->orderBy('id','desc')->get();
-        $services = Service::where('status','active')->orderBy('id','desc')->get();
-        return view('admin.orders', compact('orders','categories','services'));
+        $categories = Category::where('status', 'active')->orderBy('id', 'desc')->get();
+        $services = Service::where('status', 'active')->orderBy('id', 'desc')->get();
+
+        return view('admin.orders', compact('orders', 'categories', 'services'));
     }
 
     public function store(Request $request)
     {
         $rules = [
-            'service_id' => ['required','integer','exists:services,id'],
-            'quantity' => ['required','integer','min:1'],
-            'link' => ['required','string','max:2048'],
-            'details' => ['nullable','string'],
-            'notes' => ['nullable','string','max:5000'],
-            'runs' => ['nullable','integer','min:1'],
-            'interval' => ['nullable','integer','min:0'],
-            'comments' => ['nullable','string'],
+            'service_id' => ['required', 'integer', 'exists:services,id'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'link' => ['required', 'string', 'max:2048'],
+            'details' => ['nullable', 'string'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'runs' => ['nullable', 'integer', 'min:1'],
+            'interval' => ['nullable', 'integer', 'min:0'],
+            'comments' => ['nullable', 'string'],
         ];
 
         $isAdmin = Auth::guard('admin')->check();
         if ($isAdmin) {
-            $rules['user_id'] = ['required','integer','exists:users,id'];
+            $rules['user_id'] = ['required', 'integer', 'exists:users,id'];
         }
 
         $data = $request->validate($rules);
         $service = Service::with('apiProvider')->findOrFail((int) $data['service_id']);
 
         if ($service->status !== 'active') {
-            throw ValidationException::withMessages(['service_id' => ['هذه الخدمة غير متاحة حاليًا.']]);
+            throw ValidationException::withMessages([
+                'service_id' => ['هذه الخدمة غير متاحة حاليًا.'],
+            ]);
         }
 
         $quantity = (int) $data['quantity'];
@@ -82,57 +124,43 @@ class OrderController extends Controller
         $rate = (float) $service->rate;
         $total = round(($quantity * $rate) / 1000, 4);
         if ($total <= 0) {
-            throw ValidationException::withMessages(['service_id' => ['سعر الخدمة غير صالح.']]);
+            throw ValidationException::withMessages([
+                'service_id' => ['سعر الخدمة غير صالح.'],
+            ]);
+        }
+
+        if ($service->type === 'api') {
+            $provider = $service->apiProvider;
+            if (!$provider || $provider->status !== 'active') {
+                return response()->json(['message' => 'مزود الخدمة غير متاح حاليًا.'], 422);
+            }
+            if ((int) $service->api_provider_service_id <= 0) {
+                return response()->json(['message' => 'الخدمة غير مرتبطة بخدمة صحيحة لدى المزود.'], 422);
+            }
         }
 
         try {
+            // Persist the local order and debit exactly once before contacting the provider.
+            // Provider I/O is deliberately outside this transaction so a DB deadlock retry can
+            // never submit the same paid order to the provider twice.
             $order = DB::transaction(function () use ($data, $service, $userId, $quantity, $total) {
                 $user = User::where('id', $userId)->lockForUpdate()->firstOrFail();
                 if ((float) $user->funds + 0.0000001 < $total) {
                     throw new RuntimeException('INSUFFICIENT_BALANCE');
                 }
 
-                $remoteOrderId = null;
-                $providerError = null;
-
-                if ($service->type === 'api') {
-                    $provider = $service->apiProvider;
-                    if (!$provider || $provider->status !== 'active') {
-                        throw new RuntimeException('PROVIDER_INACTIVE');
-                    }
-
-                    $client = new SmmFansFasterClient((string) $provider->url, (string) $provider->api_key);
-                    $remote = $client->addOrder(
-                        (int) $service->api_provider_service_id,
-                        (string) $data['link'],
-                        $quantity,
-                        [
-                            'runs' => $data['runs'] ?? null,
-                            'interval' => $data['interval'] ?? null,
-                            'comments' => $data['comments'] ?? null,
-                        ]
-                    );
-
-                    if (!empty($remote['order'])) {
-                        $remoteOrderId = (int) $remote['order'];
-                    } else {
-                        $providerError = isset($remote['error']) ? (string) $remote['error'] : 'Provider rejected order';
-                        throw new RuntimeException('PROVIDER_ERROR:' . mb_substr($providerError, 0, 180));
-                    }
-                }
-
                 $now = date('Y-m-d H:i:s');
                 $orderId = DB::table('orders')->insertGetId([
                     'user_id' => $userId,
                     'service_id' => (int) $service->id,
-                    'order_api_id' => $remoteOrderId,
-                    'api_provider_error' => $providerError,
+                    'order_api_id' => null,
+                    'api_provider_error' => $service->type === 'api' ? 'DISPATCH_PENDING' : null,
                     'quantity' => $quantity,
                     'link' => (string) $data['link'],
                     'total' => $total,
                     'details' => (string) ($data['details'] ?? ''),
                     'notes' => $data['notes'] ?? null,
-                    'status' => 'pending',
+                    'status' => $service->type === 'api' ? 'processing' : 'pending',
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
@@ -140,23 +168,111 @@ class OrderController extends Controller
                 $user->funds = round((float) $user->funds - $total, 4);
                 $user->save();
 
-                return Order::with(['service','service.apiProvider','service.category','user'])->find($orderId);
-            }, 3);
-
-            return response()->json($order, 200);
+                return Order::findOrFail($orderId);
+            });
         } catch (RuntimeException $e) {
-            $message = $e->getMessage();
-            if ($message === 'INSUFFICIENT_BALANCE') {
+            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
                 return response()->json(['message' => 'الرصيد غير كافٍ لإتمام الطلب.'], 422);
-            }
-            if ($message === 'PROVIDER_INACTIVE') {
-                return response()->json(['message' => 'مزود الخدمة غير متاح حاليًا.'], 422);
-            }
-            if (str_starts_with($message, 'PROVIDER_ERROR:')) {
-                return response()->json(['message' => 'تعذر إرسال الطلب إلى مزود الخدمة.', 'provider_error' => substr($message, 15)], 422);
             }
             throw $e;
         }
+
+        if ($service->type !== 'api') {
+            return response()->json($this->freshOrderForActor($order->id, $isAdmin), 200);
+        }
+
+        try {
+            $provider = $service->apiProvider;
+            $client = new SmmFansFasterClient((string) $provider->url, (string) $provider->api_key);
+            $remote = $client->addOrder(
+                (int) $service->api_provider_service_id,
+                (string) $data['link'],
+                $quantity,
+                [
+                    'runs' => $data['runs'] ?? null,
+                    'interval' => $data['interval'] ?? null,
+                    'comments' => $data['comments'] ?? null,
+                ]
+            );
+
+            if (!empty($remote['order'])) {
+                $remoteOrderId = (int) $remote['order'];
+                $order->update([
+                    'order_api_id' => $remoteOrderId,
+                    'api_provider_error' => null,
+                    'status' => 'pending',
+                ]);
+
+                return response()->json($this->freshOrderForActor($order->id, $isAdmin), 200);
+            }
+
+            $providerError = isset($remote['error'])
+                ? (string) $remote['error']
+                : 'Provider rejected order without an order id.';
+
+            $this->refundRejectedOrder($order->id, $providerError);
+
+            return response()->json([
+                'message' => 'تعذر إرسال الطلب إلى مزود الخدمة وتمت إعادة المبلغ إلى الرصيد.',
+                'provider_error' => mb_substr($providerError, 0, 180),
+            ], 422);
+        } catch (Throwable $e) {
+            // A transport/HTTP failure can happen after the provider accepted the order but before
+            // we received its id. Do not retry or auto-refund such an uncertain dispatch: either
+            // action could create a duplicate/free provider order. Keep a durable local record for
+            // admin reconciliation instead.
+            Order::where('id', $order->id)->update([
+                'status' => 'error',
+                'api_provider_error' => mb_substr(
+                    'DISPATCH_UNCERTAIN:' . get_class($e) . ':' . $e->getMessage(),
+                    0,
+                    250
+                ),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            report($e);
+
+            return response()->json([
+                'message' => 'تعذر تأكيد نتيجة الطلب لدى المزود. تم حفظ الطلب للمراجعة ولن تتم إعادة إرساله تلقائيًا حتى لا يتكرر.',
+                'order_id' => (int) $order->id,
+            ], 503);
+        }
+    }
+
+    private function freshOrderForActor(int $orderId, bool $isAdmin): Order
+    {
+        $relations = $isAdmin
+            ? ['user', 'service', 'service.apiProvider', 'service.category']
+            : ['service', 'service.category'];
+
+        $order = Order::with($relations)->findOrFail($orderId);
+        if (!$isAdmin && $order->service) {
+            $order->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+        }
+
+        return $order;
+    }
+
+    private function refundRejectedOrder(int $orderId, string $providerError): void
+    {
+        DB::transaction(function () use ($orderId, $providerError) {
+            $order = Order::where('id', $orderId)->lockForUpdate()->firstOrFail();
+
+            // Idempotent refund: only a provider-rejected order with no remote id can be refunded here.
+            if ($order->order_api_id || $order->status === 'refunded') {
+                return;
+            }
+
+            $user = User::where('id', $order->user_id)->lockForUpdate()->firstOrFail();
+            $user->funds = round((float) $user->funds + (float) $order->total, 4);
+            $user->save();
+
+            $order->update([
+                'status' => 'refunded',
+                'api_provider_error' => mb_substr($providerError, 0, 250),
+            ]);
+        });
     }
 
     public function checkBalance($order)
@@ -165,6 +281,7 @@ class OrderController extends Controller
         if (!$service || !Auth::check()) {
             return false;
         }
+
         $total = ((int) ($order['quantity'] ?? 0) * (float) $service->rate) / 1000;
         return (float) Auth::user()->funds >= $total;
     }
@@ -177,32 +294,66 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with(['service','service.category','user'])->where('id',$id)->firstOrFail()->toArray();
-        $order['category_id'] = $order['service']['category_id'];
+        $isAdmin = Auth::guard('admin')->check();
+        $relations = $isAdmin
+            ? ['service', 'service.apiProvider', 'service.category', 'user']
+            : ['service', 'service.category'];
+
+        $query = Order::with($relations)->where('id', $id);
+        if (!$isAdmin) {
+            $query->where('user_id', (int) Auth::id());
+        }
+
+        $model = $query->firstOrFail();
+        if (!$isAdmin && $model->service) {
+            $model->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+        }
+
+        $order = $model->toArray();
+        $order['category_id'] = $order['service']['category_id'] ?? null;
+
         return response()->json($order, 200);
     }
 
     public function update(Request $request, $id)
     {
-        $order = Order::where('id',$id)->firstOrFail();
-        $allowed = $request->only(['status','notes']);
-        $order->update($allowed);
-        return response()->json($order, 200);
+        abort_unless(Auth::guard('admin')->check(), 403);
+
+        $data = $request->validate([
+            'status' => ['sometimes', 'in:' . implode(',', self::ORDER_STATUSES)],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $order = Order::where('id', $id)->firstOrFail();
+        $order->update($data);
+
+        return response()->json($order->fresh(), 200);
     }
 
     public function destroy($id)
     {
-        if (!Auth::guard('admin')->check()) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
+        abort_unless(Auth::guard('admin')->check(), 403);
+
         $order = Order::findOrFail($id);
         $order->delete();
+
         return response()->json(true, 200);
     }
 
     public function getServices($category_id)
     {
-        $services = Service::where('category_id',$category_id)->where('status','active')->orderBy('name')->get();
+        $isAdmin = Auth::guard('admin')->check();
+        $services = Service::where('category_id', $category_id)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        if (!$isAdmin) {
+            $services->each(function ($service) {
+                $service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+            });
+        }
+
         return response()->json($services, 200);
     }
 }

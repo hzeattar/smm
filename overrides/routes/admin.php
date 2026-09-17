@@ -78,6 +78,10 @@ Route::prefix('admin')->middleware(['auth:admin', 'checkenv'])->name('admin.')->
     Route::get('orders/services/{category}', [OrderController::class, 'getServices']);
 });
 
+Route::get('user', function () {
+    return redirect()->route('user.dashboard');
+})->middleware('auth');
+
 Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group(function () {
     Route::get('dashboard', [DashboardController::class, 'dashboardUser'])->name('dashboard');
     Route::get('profil', [UserController::class, 'profil'])->name('profil');
@@ -85,12 +89,17 @@ Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group
     Route::get('add-funds', [PaymentController::class, 'addFunds'])->name('add-funds');
     Route::post('add-funds/manual', [ManualDepositController::class, 'store'])->name('manual-deposit');
     Route::get('payment-methods/{id}', [PaymentMethodController::class, 'show']);
-    Route::apiResource('services', ServiceController::class);
-    Route::apiResource('transactions', TransactionController::class);
-    Route::apiResource('orders', OrderController::class);
-    Route::apiResource('tickets', TicketController::class);
+
+    // Customer routes are intentionally read-only unless the action is part of a customer workflow.
+    // Admin-only mutations remain available exclusively under /admin.
+    Route::apiResource('services', ServiceController::class)->only(['index', 'show']);
+    Route::apiResource('transactions', TransactionController::class)->only(['index', 'show']);
+    Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('tickets', TicketController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::get('tickets/download/{file}', [TicketController::class, 'downloadAttachment'])->name('tickets.download');
+    Route::apiResource('user-notifications', UserNotificationController::class)->only(['index', 'show', 'destroy']);
+
     Route::get('languages/set-language/{id}', [LanguageController::class, 'setLanguage'])->name('languages.set-language');
-    Route::apiResource('user-notifications', UserNotificationController::class)->except(['update']);
     Route::get('orders/services/{category}', [OrderController::class, 'getServices']);
 });
 

@@ -17,6 +17,13 @@ class TransactionController extends Controller
 {
     use MainTrait;
 
+    private const CUSTOMER_PAYMENT_HIDDEN_FIELDS = [
+        'api_key',
+        'private_key',
+        'client_id',
+        'environment',
+    ];
+
     public function index(Request $request)
     {
         $isAdmin = Gate::allows('isAdmin');
@@ -32,6 +39,12 @@ class TransactionController extends Controller
         }
 
         $transactions = $query->paginate();
+        if (!$isAdmin) {
+            collect($transactions->items())->each(function ($transaction) {
+                $this->sanitizeCustomerTransaction($transaction);
+            });
+        }
+
         $permissions = $this->getPermissions('transactions');
 
         if ($request->api) {
@@ -62,14 +75,26 @@ class TransactionController extends Controller
 
     public function show($id)
     {
+        $isAdmin = Gate::allows('isAdmin');
         $query = Transaction::with(['paymentMethod', 'user'])
             ->where('transaction_id', 'not like', 'SMOKE-%')
             ->where('id', $id);
-        if (!Gate::allows('isAdmin')) {
+        if (!$isAdmin) {
             $query->where('user_id', Auth::id());
         }
         $transaction = $query->firstOrFail();
+        if (!$isAdmin) {
+            $this->sanitizeCustomerTransaction($transaction);
+        }
+
         return response()->json($transaction, 200);
+    }
+
+    private function sanitizeCustomerTransaction(Transaction $transaction): void
+    {
+        if ($transaction->paymentMethod) {
+            $transaction->paymentMethod->makeHidden(self::CUSTOMER_PAYMENT_HIDDEN_FIELDS);
+        }
     }
 
     public function proof($id)
