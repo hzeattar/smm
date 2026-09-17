@@ -18,10 +18,6 @@ class ManualDepositController extends Controller
     public function store(Request $request)
     {
         try {
-            // Validate scalar fields separately from the upload. Laravel 8's generic
-            // file rule can incorrectly reject programmatically-created UploadedFile
-            // instances used by our production smoke test, and it gives us less useful
-            // diagnostics for real browser upload errors.
             $validator = Validator::make($request->only(['method_id', 'amount', 'sender_phone']), [
                 'method_id' => 'required|integer|exists:payment_methods,id',
                 'amount' => 'required|numeric|min:1',
@@ -98,21 +94,33 @@ class ManualDepositController extends Controller
                 ], 422);
             }
 
-            [$proofMime, $proofBytes] = $this->normaliseProof($path, $detectedMime);
-            if ($proofBytes === '' || strlen($proofBytes) > 900 * 1024) {
-                return response()->view('admin.deposit_failed', [
-                    'message' => 'تعذر تجهيز صورة الإثبات. جرّب صورة أخرى أو تواصل مع الدعم.',
-                ], 422);
+            // Keep the original validated image bytes. Earlier builds re-encoded every
+            // browser upload through GD; that made the production path depend on image
+            // codec details even though the DB column can safely hold the original file.
+            $proofBytes = @file_get_contents($path);
+            if ($proofBytes === false || $proofBytes === '') {
+                throw new \RuntimeException('Uploaded proof file could not be read.');
             }
+            if (strlen($proofBytes) !== $size) {
+                throw new \RuntimeException('Uploaded proof size changed while being read.');
+            }
+            $proofMime = $detectedMime;
 
             $fee = round($amount * ((float) $method->fee / 100), 2);
             $rate = YellowDuckMoney::exchangeRate();
+            if ($rate <= 0) {
+                throw new \RuntimeException('Invalid EGP/USD exchange rate.');
+            }
             $credit = max(0, round(($amount - $fee) / $rate, 4));
             $destination = $this->paymentDestination($method);
             $senderPhone = trim((string) $request->input('sender_phone'));
-            $proofName = mb_substr((string) $proof->getClientOriginalName(), 0, 250);
+
+            $proofName = (string) $proof->getClientOriginalName();
+            $proofName = basename(str_replace('\\', '/', $proofName));
+            $proofName = preg_replace('/[\x00-\x1F\x7F]/u', '', $proofName) ?: '';
+            $proofName = mb_substr($proofName, 0, 180);
             if ($proofName === '') {
-                $proofName = 'deposit-proof.jpg';
+                $proofName = 'deposit-proof.' . $this->extensionForMime($proofMime);
             }
 
             $reference = 'YD-' . now()->format('YmdHis') . '-' . $userId . '-' . strtoupper(bin2hex(random_bytes(3)));
@@ -133,6 +141,7 @@ class ManualDepositController extends Controller
             $transactionDbId = null;
             try {
                 DB::beginTransaction();
+                $now = now()->format('Y-m-d H:i:s');
 
                 $transactionDbId = (int) DB::table('transactions')->insertGetId([
                     'method_id' => $method->id,
@@ -144,32 +153,41 @@ class ManualDepositController extends Controller
                     'take_fee' => $fee,
                     'status' => 'refund',
                     'notes' => $notes,
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ]);
 
                 if ($transactionDbId <= 0) {
                     throw new \RuntimeException('Manual deposit transaction insert did not return an id.');
                 }
 
-                $proofInserted = DB::table('yellow_duck_deposit_proofs')->insert([
-                    'transaction_id' => $transactionDbId,
-                    'mime' => $proofMime,
-                    'filename' => $proofName,
-                    'data' => $proofBytes,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                if (!$proofInserted) {
+                // Bind the receipt as an actual LOB instead of relying on generic query
+                // builder string binding for multi-megabyte binary image data.
+                $pdo = DB::connection()->getPdo();
+                $statement = $pdo->prepare(
+                    'INSERT INTO `yellow_duck_deposit_proofs` '
+                    . '(`transaction_id`,`mime`,`filename`,`data`,`created_at`,`updated_at`) '
+                    . 'VALUES (:transaction_id,:mime,:filename,:data,:created_at,:updated_at)'
+                );
+                $statement->bindValue(':transaction_id', $transactionDbId, \PDO::PARAM_INT);
+                $statement->bindValue(':mime', $proofMime, \PDO::PARAM_STR);
+                $statement->bindValue(':filename', $proofName, \PDO::PARAM_STR);
+                $statement->bindParam(':data', $proofBytes, \PDO::PARAM_LOB);
+                $statement->bindValue(':created_at', $now, \PDO::PARAM_STR);
+                $statement->bindValue(':updated_at', $now, \PDO::PARAM_STR);
+                if (!$statement->execute()) {
                     throw new \RuntimeException('Manual deposit proof insert returned false.');
                 }
 
-                $proofStored = DB::table('yellow_duck_deposit_proofs')
+                $storedBytes = (int) DB::table('yellow_duck_deposit_proofs')
                     ->where('transaction_id', $transactionDbId)
-                    ->exists();
-                if (!$proofStored) {
-                    throw new \RuntimeException('Manual deposit proof could not be verified after insert.');
+                    ->selectRaw('OCTET_LENGTH(`data`) AS bytes')
+                    ->value('bytes');
+
+                if ($storedBytes !== strlen($proofBytes)) {
+                    throw new \RuntimeException(
+                        'Manual deposit proof byte verification failed. expected=' . strlen($proofBytes) . '; stored=' . $storedBytes
+                    );
                 }
 
                 DB::commit();
@@ -196,7 +214,7 @@ class ManualDepositController extends Controller
                 throw $writeError;
             }
 
-            Log::info('Manual deposit submitted for review', [
+            Log::warning('Manual deposit submitted for review', [
                 'transaction_id' => $transactionDbId,
                 'reference' => $reference,
                 'user_id' => $userId,
@@ -204,16 +222,20 @@ class ManualDepositController extends Controller
                 'amount_egp' => $amount,
                 'credit_usd' => $credit,
                 'proof_bytes' => strlen($proofBytes),
+                'proof_mime' => $proofMime,
             ]);
 
             return response()->view('admin.deposit_submitted', [
                 'reference' => $reference,
             ], 200);
         } catch (Throwable $e) {
+            $errorId = 'DEP-' . now()->format('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(2)));
             $diagnostic = [
+                'error_id' => $errorId,
                 'user_id' => Auth::id(),
                 'method_id' => $request->input('method_id'),
                 'amount' => $request->input('amount'),
+                'has_proof' => $request->hasFile('proof'),
                 'exception' => get_class($e),
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
@@ -225,76 +247,14 @@ class ManualDepositController extends Controller
             } catch (Throwable $ignored) {
             }
 
-            @error_log('MANUAL_DEPOSIT_ERROR ' . json_encode($diagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $encoded = json_encode($diagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            @error_log('MANUAL_DEPOSIT_ERROR ' . $encoded);
+            @file_put_contents('php://stderr', 'MANUAL_DEPOSIT_ERROR ' . $encoded . PHP_EOL, FILE_APPEND);
 
             return response()->view('admin.deposit_failed', [
-                'message' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى، وإذا استمرت المشكلة تواصل مع الدعم عبر واتساب.',
+                'message' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. رمز المتابعة: ' . $errorId,
             ], 500);
         }
-    }
-
-    private function normaliseProof(string $path, string $mime): array
-    {
-        $raw = @file_get_contents($path);
-        if ($raw === false || $raw === '') {
-            throw new \RuntimeException('Uploaded proof file could not be read.');
-        }
-
-        if (!function_exists('imagecreatefromstring')) {
-            if (strlen($raw) > 900 * 1024) {
-                throw new \RuntimeException('GD unavailable and proof image exceeds safe database size.');
-            }
-            return [$mime ?: 'image/jpeg', $raw];
-        }
-
-        $source = @imagecreatefromstring($raw);
-        if (!$source) {
-            throw new \RuntimeException('Uploaded proof is not a readable image.');
-        }
-
-        $width = imagesx($source);
-        $height = imagesy($source);
-        if ($width < 1 || $height < 1) {
-            imagedestroy($source);
-            throw new \RuntimeException('Uploaded proof has invalid dimensions.');
-        }
-
-        $maxSide = 1280;
-        $scale = min(1, $maxSide / max($width, $height));
-        $targetWidth = max(1, (int) round($width * $scale));
-        $targetHeight = max(1, (int) round($height * $scale));
-
-        $target = imagecreatetruecolor($targetWidth, $targetHeight);
-        if (!$target) {
-            imagedestroy($source);
-            throw new \RuntimeException('Could not allocate proof image buffer.');
-        }
-
-        $white = imagecolorallocate($target, 255, 255, 255);
-        imagefill($target, 0, 0, $white);
-        imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $width, $height);
-
-        $jpeg = '';
-        foreach ([82, 74, 66, 58, 50] as $quality) {
-            ob_start();
-            imagejpeg($target, null, $quality);
-            $candidate = (string) ob_get_clean();
-            if ($candidate !== '') {
-                $jpeg = $candidate;
-            }
-            if ($candidate !== '' && strlen($candidate) <= 850 * 1024) {
-                break;
-            }
-        }
-
-        imagedestroy($target);
-        imagedestroy($source);
-
-        if ($jpeg === '' || strlen($jpeg) > 900 * 1024) {
-            throw new \RuntimeException('Uploaded proof could not be compressed to a safe size.');
-        }
-
-        return ['image/jpeg', $jpeg];
     }
 
     private function ensureDepositProofTable(): void
@@ -334,6 +294,15 @@ class ManualDepositController extends Controller
     {
         $name = strtolower((string) $method->name);
         return str_contains($name, 'vodafone') || str_contains($name, 'instapay') || str_contains($name, 'insta pay');
+    }
+
+    private function extensionForMime(string $mime): string
+    {
+        return [
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/jpeg' => 'jpg',
+        ][$mime] ?? 'jpg';
     }
 
     private function uploadErrorMessage(int $error): string
