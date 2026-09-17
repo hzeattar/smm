@@ -63,7 +63,7 @@
 </div>
 
 <script src="{{ asset('js/app.js') }}"></script>
-<script src="{{ asset('js/manual-deposit-hardening.js') }}"></script>
+<script src="{{ asset('js/manual-deposit-hardening.js') }}?v=20260917-2042"></script>
 <script>
 (function () {
     function ready(fn){ if(document.readyState !== 'loading'){ fn(); } else { document.addEventListener('DOMContentLoaded', fn); } }
