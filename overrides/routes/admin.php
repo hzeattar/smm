@@ -96,6 +96,7 @@ Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'show']);
     Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
     Route::apiResource('tickets', TicketController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+    Route::get('tickets/download/{file}', [TicketController::class, 'downloadAttachment'])->name('tickets.download');
     Route::apiResource('user-notifications', UserNotificationController::class)->only(['index', 'show', 'destroy']);
 
     Route::get('languages/set-language/{id}', [LanguageController::class, 'setLanguage'])->name('languages.set-language');
