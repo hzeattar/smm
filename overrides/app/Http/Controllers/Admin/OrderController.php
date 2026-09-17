@@ -31,12 +31,22 @@ class OrderController extends Controller
         'error',
     ];
 
+    private const CUSTOMER_SERVICE_HIDDEN_FIELDS = [
+        'api_provider_id',
+        'api_provider_service_id',
+        'api_provider_rate',
+        'api_provider_error',
+        'api_provider_payload',
+    ];
+
     public function index(Request $request)
     {
         $isAdmin = Auth::guard('admin')->check();
+        $relations = $isAdmin
+            ? ['user', 'service', 'service.apiProvider', 'service.category']
+            : ['service', 'service.category'];
 
-        $query = Order::with(['user', 'service', 'service.apiProvider', 'service.category'])
-            ->orderBy('id', 'desc');
+        $query = Order::with($relations)->orderBy('id', 'desc');
 
         if (!$isAdmin) {
             $query->where('user_id', (int) Auth::id());
@@ -52,6 +62,14 @@ class OrderController extends Controller
         }
 
         $orders = $query->paginate();
+        if (!$isAdmin) {
+            collect($orders->items())->each(function ($order) {
+                if ($order->service) {
+                    $order->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+                }
+            });
+        }
+
         $permissions = $this->getPermissions('orders');
 
         if ($request->api) {
@@ -150,7 +168,7 @@ class OrderController extends Controller
                 $user->funds = round((float) $user->funds - $total, 4);
                 $user->save();
 
-                return Order::with(['service', 'service.apiProvider', 'service.category', 'user'])->findOrFail($orderId);
+                return Order::findOrFail($orderId);
             });
         } catch (RuntimeException $e) {
             if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
@@ -160,7 +178,7 @@ class OrderController extends Controller
         }
 
         if ($service->type !== 'api') {
-            return response()->json($order, 200);
+            return response()->json($this->freshOrderForActor($order->id, $isAdmin), 200);
         }
 
         try {
@@ -185,7 +203,7 @@ class OrderController extends Controller
                     'status' => 'pending',
                 ]);
 
-                return response()->json($order->fresh(['service', 'service.apiProvider', 'service.category', 'user']), 200);
+                return response()->json($this->freshOrderForActor($order->id, $isAdmin), 200);
             }
 
             $providerError = isset($remote['error'])
@@ -220,6 +238,20 @@ class OrderController extends Controller
                 'order_id' => (int) $order->id,
             ], 503);
         }
+    }
+
+    private function freshOrderForActor(int $orderId, bool $isAdmin): Order
+    {
+        $relations = $isAdmin
+            ? ['user', 'service', 'service.apiProvider', 'service.category']
+            : ['service', 'service.category'];
+
+        $order = Order::with($relations)->findOrFail($orderId);
+        if (!$isAdmin && $order->service) {
+            $order->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+        }
+
+        return $order;
     }
 
     private function refundRejectedOrder(int $orderId, string $providerError): void
@@ -262,13 +294,23 @@ class OrderController extends Controller
 
     public function show($id)
     {
-        $query = Order::with(['service', 'service.category', 'user'])->where('id', $id);
-        if (!Auth::guard('admin')->check()) {
+        $isAdmin = Auth::guard('admin')->check();
+        $relations = $isAdmin
+            ? ['service', 'service.apiProvider', 'service.category', 'user']
+            : ['service', 'service.category'];
+
+        $query = Order::with($relations)->where('id', $id);
+        if (!$isAdmin) {
             $query->where('user_id', (int) Auth::id());
         }
 
-        $order = $query->firstOrFail()->toArray();
-        $order['category_id'] = $order['service']['category_id'];
+        $model = $query->firstOrFail();
+        if (!$isAdmin && $model->service) {
+            $model->service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+        }
+
+        $order = $model->toArray();
+        $order['category_id'] = $order['service']['category_id'] ?? null;
 
         return response()->json($order, 200);
     }
@@ -300,10 +342,17 @@ class OrderController extends Controller
 
     public function getServices($category_id)
     {
+        $isAdmin = Auth::guard('admin')->check();
         $services = Service::where('category_id', $category_id)
             ->where('status', 'active')
             ->orderBy('name')
             ->get();
+
+        if (!$isAdmin) {
+            $services->each(function ($service) {
+                $service->makeHidden(self::CUSTOMER_SERVICE_HIDDEN_FIELDS);
+            });
+        }
 
         return response()->json($services, 200);
     }
