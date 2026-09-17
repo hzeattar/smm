@@ -156,6 +156,15 @@ if [ -f scripts/smoke-http-manual-deposit.php ]; then
   fi
 fi
 
+if [ -f scripts/smoke-admin-user-control.php ]; then
+  echo "Running admin user-control smoke check..."
+  if ! php scripts/smoke-admin-user-control.php; then
+    write_health "admin_user_control_smoke_failed"
+    echo "Admin user-control smoke failed; refusing to publish a broken deployment."
+    exit 88
+  fi
+fi
+
 write_health "ready"
 
 if [ -f scripts/sync-smmfansfaster.php ]; then
