@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentMethod;
-use App\Models\Transaction;
 use App\Support\YellowDuckMoney;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +32,11 @@ class ManualDepositController extends Controller
 
             if ($validator->fails()) {
                 return redirect()->route('user.add-funds')->withErrors($validator)->withInput($request->except('proof'));
+            }
+
+            $userId = (int) Auth::id();
+            if ($userId <= 0) {
+                return redirect()->route('login')->withErrors(['deposit' => 'انتهت جلسة الدخول. سجّل الدخول ثم أعد المحاولة.']);
             }
 
             $method = PaymentMethod::where('id', (int) $request->input('method_id'))
@@ -73,44 +77,64 @@ class ManualDepositController extends Controller
             $destination = $this->paymentDestination($method);
             $senderPhone = trim((string) $request->input('sender_phone'));
             $proofName = mb_substr((string) $proof->getClientOriginalName(), 0, 250);
+            $reference = 'YD-' . now()->format('YmdHis') . '-' . $userId . '-' . strtoupper(bin2hex(random_bytes(3)));
+            $notes = trim(implode("\n", [
+                'Yellow Duck manual deposit - pending admin approval.',
+                'Payment method: ' . (string) $method->name,
+                'Payment destination: ' . $destination,
+                'Deposit currency: EGP',
+                'Deposit amount (EGP): ' . number_format($amount, 2, '.', ''),
+                'Exchange rate: EGP ' . number_format($rate, 2, '.', '') . ' = USD 1',
+                'USD credit: ' . number_format($credit, 4, '.', ''),
+                'Sender phone: ' . $senderPhone,
+                'Proof filename: ' . $proofName,
+            ]));
 
             $this->ensureDepositProofTable();
 
-            DB::transaction(function () use ($method, $amount, $fee, $credit, $rate, $destination, $senderPhone, $proofName, $proofMime, $proofBytes) {
-                $transaction = new Transaction();
-                $transaction->method_id = $method->id;
-                $transaction->transaction_id = 'YD-' . now()->format('YmdHis') . '-' . Auth::id() . '-' . strtoupper(bin2hex(random_bytes(3)));
-                $transaction->user_id = Auth::id();
-                $transaction->amount = $amount;
-                $transaction->fee = 0;
-                $transaction->profit = 0;
-                $transaction->take_fee = $fee;
-                $transaction->status = 'refund';
-                $transaction->notes = trim(implode("\n", [
-                    'Yellow Duck manual deposit - pending admin approval.',
-                    'Payment method: ' . (string) $method->name,
-                    'Payment destination: ' . $destination,
-                    'Deposit currency: EGP',
-                    'Deposit amount (EGP): ' . number_format($amount, 2, '.', ''),
-                    'Exchange rate: EGP ' . number_format($rate, 2, '.', '') . ' = USD 1',
-                    'USD credit: ' . number_format($credit, 4, '.', ''),
-                    'Sender phone: ' . $senderPhone,
-                    'Proof filename: ' . $proofName,
-                ]));
-                $transaction->save();
+            $transactionDbId = DB::transaction(function () use ($method, $reference, $userId, $amount, $fee, $notes, $proofMime, $proofName, $proofBytes) {
+                // Use the query builder here deliberately: the legacy Transaction model has a
+                // "created" observer that sends payment notifications immediately. A manual
+                // deposit is only a review request at this point, not a completed payment.
+                $transactionId = DB::table('transactions')->insertGetId([
+                    'method_id' => $method->id,
+                    'transaction_id' => $reference,
+                    'user_id' => $userId,
+                    'amount' => $amount,
+                    'fee' => 0,
+                    'profit' => 0,
+                    'take_fee' => $fee,
+                    'status' => 'refund',
+                    'notes' => $notes,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
 
                 DB::table('yellow_duck_deposit_proofs')->insert([
-                    'transaction_id' => $transaction->id,
+                    'transaction_id' => $transactionId,
                     'mime' => $proofMime,
                     'filename' => $proofName,
                     'data' => 'base64:' . base64_encode($proofBytes),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-            }, 3);
+
+                return (int) $transactionId;
+            }, 1);
+
+            Log::info('Manual deposit submitted for review', [
+                'transaction_id' => $transactionDbId,
+                'reference' => $reference,
+                'user_id' => $userId,
+                'method_id' => $method->id,
+                'amount_egp' => $amount,
+                'credit_usd' => $credit,
+            ]);
 
             return redirect()->route('user.transactions.index')
-                ->with('success', 'تم إرسال طلب الإيداع وصورة الإثبات بنجاح. سيتم إضافة الرصيد بعد مراجعة الأدمن.');
+                ->with('deposit_submitted', true)
+                ->with('deposit_reference', $reference)
+                ->with('success', 'تم استلام طلب الإيداع وهو الآن قيد المراجعة. بمجرد التأكد من التحويل سيتم إضافة الرصيد إلى حسابك.');
         } catch (Throwable $e) {
             try {
                 Log::error('Manual deposit submission failed', [
@@ -126,7 +150,8 @@ class ManualDepositController extends Controller
             }
 
             return redirect()->route('user.add-funds')
-                ->withErrors(['deposit' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى بعد لحظات.']);
+                ->withErrors(['deposit' => 'تعذر إرسال طلب الإيداع الآن. لم يتم اعتماد أو خصم أي رصيد. حاول مرة أخرى بعد لحظات أو تواصل مع الدعم.'])
+                ->withInput($request->except('proof'));
         }
     }
 
