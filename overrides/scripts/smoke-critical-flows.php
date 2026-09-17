@@ -19,7 +19,6 @@ $requiredClasses = [
     App\Observers\TransactionObserver::class,
     App\Support\YellowDuckMoney::class,
 ];
-
 foreach ($requiredClasses as $class) {
     if (!class_exists($class)) {
         fwrite(STDERR, "Critical smoke check failed: missing class {$class}.\n");
@@ -35,7 +34,6 @@ $requiredRoutes = [
     'admin.transactions.proof',
     'admin.manual-balance',
 ];
-
 foreach ($requiredRoutes as $route) {
     if (!Route::has($route)) {
         fwrite(STDERR, "Critical smoke check failed: missing route {$route}.\n");
@@ -51,8 +49,37 @@ foreach ($requiredTables as $table) {
     }
 }
 
-$userId = DB::table('users')->where('status', 'active')->orderBy('id')->value('id');
-$methodId = DB::table('payment_methods')
+$proofColumn = DB::selectOne(
+    "SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'yellow_duck_deposit_proofs'
+       AND COLUMN_NAME = 'data'
+     LIMIT 1"
+);
+$proofType = strtolower((string) ($proofColumn->data_type ?? ''));
+if (!in_array($proofType, ['mediumblob', 'longblob'], true)) {
+    fwrite(STDERR, "Critical smoke check failed: receipt data column is {$proofType}, expected MEDIUMBLOB/LONGBLOB.\n");
+    exit(83);
+}
+
+$packet = (int) (DB::selectOne('SELECT @@max_allowed_packet AS bytes')->bytes ?? 0);
+if ($packet < 6 * 1024 * 1024) {
+    fwrite(STDERR, "Critical smoke check failed: MySQL max_allowed_packet is too small ({$packet}).\n");
+    exit(84);
+}
+
+$userId = DB::table('users')
+    ->where('status', 'active')
+    ->where(function ($q) {
+        $q->where('username', 'yellowduck_user')->orWhere('email', 'user@yellowduck.app');
+    })
+    ->value('id');
+if (!$userId) {
+    $userId = DB::table('users')->where('status', 'active')->orderBy('id')->value('id');
+}
+
+$methods = DB::table('payment_methods')
     ->where('status', 'active')
     ->where(function ($query) {
         $query->where('name', 'like', '%Vodafone%')
@@ -60,167 +87,163 @@ $methodId = DB::table('payment_methods')
             ->orWhere('name', 'like', '%Insta Pay%');
     })
     ->orderBy('id')
-    ->value('id');
+    ->get();
 
-if (!$userId || !$methodId) {
-    fwrite(STDOUT, "Critical smoke check skipped DB write test: no active user/manual payment method yet.\n");
+if (!$userId || $methods->isEmpty()) {
+    fwrite(STDOUT, "Critical smoke check skipped manual deposit flow: no active test user/manual payment method.\n");
     exit(0);
 }
 
-$directTransactionId = null;
-$directReference = 'SMOKE-DB-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
-
+// First prove that the live DB schema can persist a production-sized binary payload,
+// not only the tiny 1x1 image that let earlier schema mistakes slip through.
+$largeReference = 'SMOKE-LARGE-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
+$largeTransactionId = null;
 try {
-    $directTransactionId = DB::table('transactions')->insertGetId([
-        'method_id' => $methodId,
-        'transaction_id' => $directReference,
+    $firstMethod = $methods->first();
+    $largeTransactionId = (int) DB::table('transactions')->insertGetId([
+        'method_id' => $firstMethod->id,
+        'transaction_id' => $largeReference,
         'user_id' => $userId,
         'amount' => 55,
         'fee' => 0,
         'profit' => 0,
         'take_fee' => 0,
         'status' => 'refund',
-        'notes' => "Yellow Duck manual deposit - smoke DB test.\nUSD credit: 1.0000",
+        'notes' => 'Yellow Duck manual deposit - large binary smoke DB test.',
         'created_at' => now(),
         'updated_at' => now(),
     ]);
 
-    $tinyPng = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZLx8AAAAASUVORK5CYII=', true);
-    DB::table('yellow_duck_deposit_proofs')->insert([
-        'transaction_id' => $directTransactionId,
-        'mime' => 'image/png',
-        'filename' => 'smoke-db.png',
-        'data' => $tinyPng ?: '',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
+    $largeBlob = random_bytes(2 * 1024 * 1024);
+    $now = now()->format('Y-m-d H:i:s');
+    $pdo = DB::connection()->getPdo();
+    $statement = $pdo->prepare(
+        'INSERT INTO `yellow_duck_deposit_proofs` '
+        . '(`transaction_id`,`mime`,`filename`,`data`,`created_at`,`updated_at`) '
+        . 'VALUES (:transaction_id,:mime,:filename,:data,:created_at,:updated_at)'
+    );
+    $statement->bindValue(':transaction_id', $largeTransactionId, PDO::PARAM_INT);
+    $statement->bindValue(':mime', 'image/jpeg', PDO::PARAM_STR);
+    $statement->bindValue(':filename', 'smoke-large.jpg', PDO::PARAM_STR);
+    $statement->bindParam(':data', $largeBlob, PDO::PARAM_LOB);
+    $statement->bindValue(':created_at', $now, PDO::PARAM_STR);
+    $statement->bindValue(':updated_at', $now, PDO::PARAM_STR);
+    $statement->execute();
 
     $storedLength = (int) DB::table('yellow_duck_deposit_proofs')
-        ->where('transaction_id', $directTransactionId)
-        ->selectRaw('OCTET_LENGTH(data) AS bytes')
+        ->where('transaction_id', $largeTransactionId)
+        ->selectRaw('OCTET_LENGTH(`data`) AS bytes')
         ->value('bytes');
-
-    if ($storedLength < 1) {
-        throw new RuntimeException('Binary proof persistence verification failed.');
+    if ($storedLength !== strlen($largeBlob)) {
+        throw new RuntimeException("Large binary proof persistence failed. expected=" . strlen($largeBlob) . "; stored={$storedLength}");
     }
 } catch (Throwable $e) {
-    fwrite(STDERR, "Critical smoke DB write failed: " . get_class($e) . ': ' . $e->getMessage() . "\n");
-    $exitCode = 83;
+    fwrite(STDERR, "Critical large-receipt DB check failed: " . get_class($e) . ': ' . $e->getMessage() . "\n");
+    $exitCode = 85;
 } finally {
-    if ($directTransactionId) {
-        DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $directTransactionId)->delete();
-        DB::table('transactions')->where('id', $directTransactionId)->delete();
+    if ($largeTransactionId) {
+        DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $largeTransactionId)->delete();
+        DB::table('transactions')->where('id', $largeTransactionId)->delete();
     } else {
-        DB::table('transactions')->where('transaction_id', $directReference)->delete();
+        DB::table('transactions')->where('transaction_id', $largeReference)->delete();
     }
 }
-
 if (isset($exitCode)) {
     exit($exitCode);
 }
 
-$marker = 'smoke-e2e-' . bin2hex(random_bytes(5));
-$tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $marker . '.jpg';
-$response = null;
+$tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'yellow-duck-deposit-e2e-' . bin2hex(random_bytes(5)) . '.jpg';
+$createdTransactionIds = [];
 
 try {
-    $image = imagecreatetruecolor(64, 64);
+    // Generate a realistic screenshot-sized JPEG (>64 KB) so the controller test
+    // exercises the same binary path as a browser receipt, not a tiny placeholder.
+    $image = imagecreatetruecolor(1600, 1200);
     if (!$image) {
-        throw new RuntimeException('Unable to create smoke proof image.');
+        throw new RuntimeException('Unable to create smoke receipt image.');
     }
-    $bg = imagecolorallocate($image, 245, 245, 245);
-    imagefill($image, 0, 0, $bg);
-    imagejpeg($image, $tmpPath, 80);
+    $background = imagecolorallocate($image, 245, 245, 245);
+    imagefill($image, 0, 0, $background);
+    for ($i = 0; $i < 7000; $i++) {
+        $color = imagecolorallocate($image, random_int(0, 255), random_int(0, 255), random_int(0, 255));
+        $x = random_int(0, 1599);
+        $y = random_int(0, 1199);
+        imagefilledrectangle($image, $x, $y, min(1599, $x + random_int(2, 25)), min(1199, $y + random_int(2, 25)), $color);
+    }
+    imagejpeg($image, $tmpPath, 92);
     imagedestroy($image);
 
-    if (!is_file($tmpPath) || filesize($tmpPath) < 1) {
-        throw new RuntimeException('Smoke proof image was not written.');
+    $fileSize = is_file($tmpPath) ? (int) filesize($tmpPath) : 0;
+    if ($fileSize < 64 * 1024 || $fileSize > 5 * 1024 * 1024) {
+        throw new RuntimeException("Smoke receipt size is not representative: {$fileSize} bytes.");
     }
 
     if (!Auth::loginUsingId((int) $userId)) {
         throw new RuntimeException('Could not authenticate smoke-test user.');
     }
 
-    $uploaded = new UploadedFile($tmpPath, $marker . '.jpg', 'image/jpeg', UPLOAD_ERR_OK, true);
-    $request = Request::create(
-        '/user/add-funds/manual',
-        'POST',
-        [
-            'method_id' => (int) $methodId,
-            'amount' => 55,
-            'sender_phone' => '01000000000',
-        ],
-        [],
-        ['proof' => $uploaded]
-    );
-
     $controller = app(App\Http\Controllers\Admin\ManualDepositController::class);
-    $response = $controller->store($request);
-    $status = method_exists($response, 'getStatusCode') ? (int) $response->getStatusCode() : 0;
 
-    if ($status !== 200) {
-        $body = method_exists($response, 'getContent') ? (string) $response->getContent() : '';
-        $plainBody = trim(preg_replace('/\s+/', ' ', strip_tags($body)) ?? '');
-        if ($plainBody !== '') {
-            fwrite(STDERR, "Manual deposit smoke response: " . mb_substr($plainBody, 0, 1600) . "\n");
+    foreach ($methods as $method) {
+        $marker = 'smoke-e2e-' . $method->id . '-' . bin2hex(random_bytes(5));
+        $max = (float) $method->max;
+        $min = max(1, (float) $method->min);
+        $amount = $max > 0 ? min(max(1000, $min), $max) : max(1000, $min);
+
+        $uploaded = new UploadedFile($tmpPath, $marker . '.jpg', 'image/jpeg', UPLOAD_ERR_OK, true);
+        $request = Request::create(
+            '/user/add-funds/manual',
+            'POST',
+            [
+                'method_id' => (int) $method->id,
+                'amount' => $amount,
+                'sender_phone' => '01000000000',
+            ],
+            [],
+            ['proof' => $uploaded]
+        );
+
+        $response = $controller->store($request);
+        $status = method_exists($response, 'getStatusCode') ? (int) $response->getStatusCode() : 0;
+        if ($status !== 200) {
+            $body = method_exists($response, 'getContent') ? (string) $response->getContent() : '';
+            $plainBody = trim(preg_replace('/\s+/', ' ', strip_tags($body)) ?? '');
+            fwrite(STDERR, "Manual deposit smoke failed for method {$method->id} ({$method->name}) HTTP {$status}: " . mb_substr($plainBody, 0, 1200) . "\n");
+            throw new RuntimeException("Manual deposit controller returned HTTP {$status} for {$method->name}.");
         }
 
-        $logPath = storage_path('logs/laravel.log');
-        $logTail = '';
-        if (is_file($logPath)) {
-            $size = filesize($logPath);
-            $fh = fopen($logPath, 'rb');
-            if ($fh) {
-                if ($size > 12000) {
-                    fseek($fh, -12000, SEEK_END);
-                }
-                $logTail = stream_get_contents($fh) ?: '';
-                fclose($fh);
-            }
+        $created = DB::table('transactions')
+            ->where('user_id', $userId)
+            ->where('method_id', $method->id)
+            ->where('notes', 'like', '%' . $marker . '%')
+            ->orderByDesc('id')
+            ->first();
+        if (!$created) {
+            throw new RuntimeException("Manual deposit success response did not persist transaction for {$method->name}.");
         }
-        fwrite(STDERR, "Critical manual-deposit controller smoke failed with HTTP {$status}.\n");
-        if ($logTail !== '') {
-            fwrite(STDERR, "--- laravel.log tail ---\n{$logTail}\n--- end laravel.log tail ---\n");
+        $createdTransactionIds[] = (int) $created->id;
+
+        $stored = DB::table('yellow_duck_deposit_proofs')
+            ->where('transaction_id', $created->id)
+            ->selectRaw('OCTET_LENGTH(`data`) AS bytes')
+            ->value('bytes');
+        if ((int) $stored !== $fileSize) {
+            throw new RuntimeException("Receipt byte mismatch for {$method->name}: expected {$fileSize}; stored " . (int) $stored);
         }
-        throw new RuntimeException("Manual deposit controller returned HTTP {$status}.");
     }
 
-    $created = DB::table('transactions')
-        ->where('user_id', $userId)
-        ->where('method_id', $methodId)
-        ->where('notes', 'like', '%' . $marker . '%')
-        ->orderByDesc('id')
-        ->first();
-
-    if (!$created) {
-        throw new RuntimeException('Manual deposit controller returned success but did not persist the transaction.');
-    }
-
-    $proofExists = DB::table('yellow_duck_deposit_proofs')
-        ->where('transaction_id', $created->id)
-        ->exists();
-
-    if (!$proofExists) {
-        throw new RuntimeException('Manual deposit controller persisted transaction without proof.');
-    }
-
-    fwrite(STDOUT, "Critical smoke checks OK: classes, routes, schema, binary proof persistence and full manual-deposit controller flow.\n");
+    fwrite(STDOUT, "Critical smoke checks OK: classes, routes, schema={$proofType}, max_packet={$packet}, 2MB blob, and full manual-deposit flow for {$methods->count()} manual methods with {$fileSize}-byte browser-like receipt.\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "Critical manual-deposit flow failed: " . get_class($e) . ': ' . $e->getMessage() . "\n");
-    $exitCode = 84;
+    $exitCode = 86;
 } finally {
-    try {
-        $rows = DB::table('transactions')
-            ->where('user_id', $userId)
-            ->where('method_id', $methodId)
-            ->where('notes', 'like', '%' . $marker . '%')
-            ->pluck('id');
-        foreach ($rows as $id) {
+    foreach ($createdTransactionIds as $id) {
+        try {
             DB::table('yellow_duck_deposit_proofs')->where('transaction_id', $id)->delete();
             DB::table('transactions')->where('id', $id)->delete();
+        } catch (Throwable $cleanupError) {
+            fwrite(STDERR, "Smoke cleanup warning for {$id}: " . $cleanupError->getMessage() . "\n");
         }
-    } catch (Throwable $cleanupError) {
-        fwrite(STDERR, "Smoke cleanup warning: " . $cleanupError->getMessage() . "\n");
     }
 
     Auth::logout();
