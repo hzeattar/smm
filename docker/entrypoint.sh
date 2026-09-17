@@ -10,6 +10,7 @@ a2enconf railway-servername >/dev/null 2>&1 || true
 export APP_ENV="${APP_ENV:-production}"
 export APP_DEBUG="${APP_DEBUG:-false}"
 export LOG_CHANNEL="${LOG_CHANNEL:-stderr}"
+export LOG_LEVEL="${LOG_LEVEL:-warning}"
 export APP_NAME="${APP_NAME:-البطة الصفرا لخدمات السوشيال ميديا}"
 export DB_CONNECTION="mysql"
 export SESSION_DRIVER="${SESSION_DRIVER:-database}"
@@ -45,7 +46,7 @@ mkdir -p storage/framework/cache storage/framework/sessions storage/framework/vi
 chown -R www-data:www-data storage bootstrap/cache
 
 php -r '
-$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_CONNECTION","SESSION_LIFETIME","SESSION_SECURE_COOKIE","SESSION_DOMAIN","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE","SMMFANSFASTER_API_URL","SMMFANSFASTER_API_KEY","SMMFANSFASTER_MARGIN_PERCENT","SMMFANSFASTER_PROVIDER_STATUS","SMM_STATUS_SYNC_ENABLED","SMM_STATUS_SYNC_INTERVAL"];
+$keys=["APP_ENV","APP_DEBUG","APP_KEY","APP_URL","APP_NAME","LOG_CHANNEL","LOG_LEVEL","DB_CONNECTION","DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","DB_PASSWORD","SESSION_DRIVER","SESSION_CONNECTION","SESSION_LIFETIME","SESSION_SECURE_COOKIE","SESSION_DOMAIN","SESSION_COOKIE","CACHE_DRIVER","QUEUE_CONNECTION","YELLOW_DUCK_USD_EGP_RATE","SMMFANSFASTER_API_URL","SMMFANSFASTER_API_KEY","SMMFANSFASTER_MARGIN_PERCENT","SMMFANSFASTER_PROVIDER_STATUS","SMM_STATUS_SYNC_ENABLED","SMM_STATUS_SYNC_INTERVAL"];
 foreach($keys as $k){
   $v=getenv($k);
   if($v===false) continue;
@@ -130,7 +131,7 @@ touch storage/installed
 chown www-data:www-data storage/installed
 
 if [ -f scripts/bootstrap-yellow-duck-payments.php ]; then
-  php scripts/bootstrap-yellow-duck-payments.php || true
+  php scripts/bootstrap-yellow-duck-payments.php
 fi
 
 php artisan config:clear || true
@@ -148,8 +149,6 @@ fi
 
 write_health "ready"
 
-# The provider catalog can take a minute to sync. Run it in the background so
-# Apache becomes available immediately and Railway does not serve startup 502s.
 if [ -f scripts/sync-smmfansfaster.php ]; then
   (php scripts/sync-smmfansfaster.php || true) &
 fi
