@@ -147,6 +147,15 @@ if [ -f scripts/smoke-critical-flows.php ]; then
   fi
 fi
 
+if [ -f scripts/smoke-http-manual-deposit.php ]; then
+  echo "Running full HTTP-stack manual deposit smoke check..."
+  if ! php scripts/smoke-http-manual-deposit.php; then
+    write_health "http_manual_deposit_smoke_failed"
+    echo "Full HTTP manual-deposit smoke failed; refusing to publish a broken deployment."
+    exit 81
+  fi
+fi
+
 write_health "ready"
 
 if [ -f scripts/sync-smmfansfaster.php ]; then
