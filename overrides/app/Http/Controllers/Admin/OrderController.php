@@ -99,16 +99,45 @@ class OrderController extends Controller
             throw ValidationException::withMessages(['service_id' => ['سعر الخدمة غير صالح.']]);
         }
 
+        $client = null;
         if ($service->type === 'api') {
             $provider = $service->apiProvider;
             if (!$provider || $provider->status !== 'active') {
                 return response()->json(['message' => 'مزود الخدمة غير متاح حاليًا.'], 422);
             }
+
+            try {
+                $client = new SmmFansFasterClient((string) $provider->url, (string) $provider->api_key);
+            } catch (Throwable $e) {
+                Log::error('Provider client configuration invalid', [
+                    'service_id' => $service->id,
+                    'provider_id' => $provider->id ?? null,
+                    'exception' => get_class($e),
+                ]);
+                return response()->json(['message' => 'إعدادات مزود الخدمة غير مكتملة حاليًا.'], 422);
+            }
         }
 
         try {
-            $order = DB::transaction(function () use ($data, $service, $userId, $quantity, $total) {
+            $order = DB::transaction(function () use ($data, $service, $userId, $quantity, $total, $isAdmin) {
                 $user = User::where('id', $userId)->lockForUpdate()->firstOrFail();
+
+                if (!$isAdmin && $service->type === 'api') {
+                    $recent = Order::where('user_id', $userId)
+                        ->where('service_id', (int) $service->id)
+                        ->where('quantity', $quantity)
+                        ->where('link', (string) $data['link'])
+                        ->where('status', 'pending')
+                        ->whereNull('order_api_id')
+                        ->where('created_at', '>=', now()->subSeconds(60))
+                        ->orderByDesc('id')
+                        ->first();
+
+                    if ($recent) {
+                        throw new RuntimeException('DUPLICATE_IN_PROGRESS:' . $recent->id);
+                    }
+                }
+
                 if ((float) $user->funds + 0.0000001 < $total) {
                     throw new RuntimeException('INSUFFICIENT_BALANCE');
                 }
@@ -135,8 +164,15 @@ class OrderController extends Controller
                 return Order::with(['service','service.apiProvider','service.category','user'])->findOrFail($orderId);
             });
         } catch (RuntimeException $e) {
-            if ($e->getMessage() === 'INSUFFICIENT_BALANCE') {
+            $message = $e->getMessage();
+            if ($message === 'INSUFFICIENT_BALANCE') {
                 return response()->json(['message' => 'الرصيد غير كافٍ لإتمام الطلب.'], 422);
+            }
+            if (str_starts_with($message, 'DUPLICATE_IN_PROGRESS:')) {
+                return response()->json([
+                    'message' => 'يوجد طلب مطابق قيد الإرسال بالفعل. انتظر نتيجة الطلب الحالي ولا تعِد الإرسال.',
+                    'order_id' => (int) substr($message, strlen('DUPLICATE_IN_PROGRESS:')),
+                ], 409);
             }
             throw $e;
         }
@@ -146,8 +182,6 @@ class OrderController extends Controller
         }
 
         try {
-            $provider = $service->apiProvider;
-            $client = new SmmFansFasterClient((string) $provider->url, (string) $provider->api_key);
             $remote = $client->addOrder(
                 (int) $service->api_provider_service_id,
                 (string) $data['link'],
@@ -158,12 +192,33 @@ class OrderController extends Controller
                     'comments' => $data['comments'] ?? null,
                 ]
             );
-
-            if (empty($remote['order'])) {
-                $providerError = isset($remote['error']) ? (string) $remote['error'] : 'Provider rejected order';
-                throw new RuntimeException('PROVIDER_ERROR:' . mb_substr($providerError, 0, 180));
+        } catch (Throwable $e) {
+            $ambiguous = 'AMBIGUOUS_PROVIDER_RESULT:' . mb_substr($e->getMessage(), 0, 180);
+            try {
+                Order::where('id', $order->id)->whereNull('order_api_id')->update([
+                    'api_provider_error' => $ambiguous,
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+            } catch (Throwable $recordError) {
+                Log::error('Could not record ambiguous provider result', [
+                    'order_id' => $order->id,
+                    'exception' => get_class($recordError),
+                ]);
             }
 
+            Log::error('Provider order result is ambiguous; balance remains reserved to prevent duplicate/free fulfillment', [
+                'order_id' => $order->id,
+                'user_id' => $userId,
+                'exception' => get_class($e),
+            ]);
+
+            return response()->json([
+                'message' => 'تعذر تأكيد نتيجة الإرسال للمزود. الطلب مسجل للمراجعة ولم تتم إعادة الرصيد تلقائيًا لتجنب تكرار الطلب. لا تعِد الإرسال.',
+                'order_id' => $order->id,
+            ], 503);
+        }
+
+        if (!empty($remote['order'])) {
             $remoteOrderId = (int) $remote['order'];
             $order->forceFill([
                 'order_api_id' => $remoteOrderId,
@@ -172,50 +227,51 @@ class OrderController extends Controller
             ])->save();
 
             return response()->json($order->fresh(['service','service.apiProvider','service.category','user']), 200);
-        } catch (Throwable $e) {
-            $message = $e->getMessage();
-            $providerError = str_starts_with($message, 'PROVIDER_ERROR:')
-                ? substr($message, 15)
-                : 'Provider request failed';
-
-            try {
-                DB::transaction(function () use ($order, $userId, $total, $providerError) {
-                    $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->firstOrFail();
-                    if (!empty($lockedOrder->order_api_id)) {
-                        return;
-                    }
-
-                    $user = User::where('id', $userId)->lockForUpdate()->firstOrFail();
-                    $user->funds = round((float) $user->funds + $total, 4);
-                    $user->save();
-
-                    $lockedOrder->forceFill([
-                        'status' => 'error',
-                        'api_provider_error' => mb_substr((string) $providerError, 0, 250),
-                    ])->save();
-                });
-            } catch (Throwable $refundError) {
-                Log::error('Order provider failure refund/reconciliation failed', [
-                    'order_id' => $order->id,
-                    'user_id' => $userId,
-                    'exception' => get_class($refundError),
-                ]);
-                return response()->json([
-                    'message' => 'تعذر إكمال الطلب وتم تسجيله للمراجعة اليدوية. لم يتم إرسال محاولة ثانية للمزود.',
-                    'order_id' => $order->id,
-                ], 503);
-            }
-
-            Log::warning('Provider order rejected or unavailable', [
-                'order_id' => $order->id,
-                'exception' => get_class($e),
-            ]);
-
-            return response()->json([
-                'message' => 'تعذر إرسال الطلب إلى مزود الخدمة وتمت إعادة المبلغ إلى الرصيد.',
-                'order_id' => $order->id,
-            ], 422);
         }
+
+        $providerError = isset($remote['error']) ? (string) $remote['error'] : 'Provider rejected order';
+
+        try {
+            DB::transaction(function () use ($order, $userId, $total, $providerError) {
+                $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->firstOrFail();
+                if (!empty($lockedOrder->order_api_id)) {
+                    return;
+                }
+
+                if ($lockedOrder->status === 'error' && str_starts_with((string) $lockedOrder->api_provider_error, 'REFUNDED:')) {
+                    return;
+                }
+
+                $user = User::where('id', $userId)->lockForUpdate()->firstOrFail();
+                $user->funds = round((float) $user->funds + $total, 4);
+                $user->save();
+
+                $lockedOrder->forceFill([
+                    'status' => 'error',
+                    'api_provider_error' => 'REFUNDED:' . mb_substr($providerError, 0, 240),
+                ])->save();
+            });
+        } catch (Throwable $refundError) {
+            Log::error('Provider rejection refund/reconciliation failed', [
+                'order_id' => $order->id,
+                'user_id' => $userId,
+                'exception' => get_class($refundError),
+            ]);
+            return response()->json([
+                'message' => 'رفض المزود الطلب وتم تسجيل الحالة للمراجعة اليدوية. لم تتم محاولة إرسال ثانية.',
+                'order_id' => $order->id,
+            ], 503);
+        }
+
+        Log::warning('Provider explicitly rejected order; customer refunded', [
+            'order_id' => $order->id,
+            'user_id' => $userId,
+        ]);
+
+        return response()->json([
+            'message' => 'رفض مزود الخدمة الطلب وتمت إعادة المبلغ إلى الرصيد.',
+            'order_id' => $order->id,
+        ], 422);
     }
 
     public function checkBalance($order)
