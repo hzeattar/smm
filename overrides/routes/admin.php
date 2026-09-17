@@ -20,6 +20,7 @@ use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Admin\PaymentMethodController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Admin\UserNotificationController;
+use App\Http\Controllers\Admin\AdminUserManagementController;
 
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('login', function () {
@@ -46,6 +47,13 @@ Route::prefix('admin')->middleware(['auth:admin', 'checkenv'])->name('admin.')->
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('admins', AdminController::class);
     Route::post('manual-balance', [UserController::class, 'addBalance'])->name('manual-balance');
+
+    Route::get('user-management/services/search', [AdminUserManagementController::class, 'searchServices'])->name('users.manage.services');
+    Route::get('users/{id}/manage', [AdminUserManagementController::class, 'show'])->name('users.manage');
+    Route::post('users/{id}/manage/profile', [AdminUserManagementController::class, 'updateProfile'])->name('users.manage.profile');
+    Route::post('users/{id}/manage/balance', [AdminUserManagementController::class, 'adjustBalance'])->name('users.manage.balance');
+    Route::post('users/{id}/manage/order', [AdminUserManagementController::class, 'createOrder'])->name('users.manage.order');
+
     Route::apiResource('users', UserController::class);
     Route::get('profil', [UserController::class, 'profil'])->name('profil');
     Route::post('profil', [UserController::class, 'profil'])->name('post-profil');
