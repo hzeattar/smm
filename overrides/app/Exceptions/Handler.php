@@ -22,27 +22,50 @@ class Handler extends ExceptionHandler
     public function register()
     {
         $this->reportable(function (Throwable $e) {
-            //
+            try {
+                $request = request();
+                if ($request && $request->is('user/add-funds/manual')) {
+                    $diagnostic = [
+                        'method' => $request->method(),
+                        'path' => $request->path(),
+                        'user_id' => optional($request->user())->id,
+                        'has_proof' => $request->hasFile('proof'),
+                        'content_length' => $request->server('CONTENT_LENGTH'),
+                        'exception' => get_class($e),
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ];
+                    $encoded = json_encode($diagnostic, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    @error_log('MANUAL_DEPOSIT_HTTP_EXCEPTION ' . $encoded);
+                    @file_put_contents('php://stderr', 'MANUAL_DEPOSIT_HTTP_EXCEPTION ' . $encoded . PHP_EOL, FILE_APPEND);
+                }
+            } catch (Throwable $ignored) {
+            }
         });
     }
 
     public function render($request, Throwable $exception)
     {
-        // A login form left open across a deploy/session rotation can contain an
-        // old CSRF token. Never show the raw Laravel 419 page for this case:
-        // rotate the stale session/token and send the browser to a fresh form.
+        // Forms left open across a deployment/session rotation can contain an old
+        // CSRF token. Refresh those sessions instead of returning a raw framework page.
         if ($exception instanceof TokenMismatchException && $request->isMethod('post')) {
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
             if ($request->is('admin/login') || $request->is('login')) {
-                if ($request->hasSession()) {
-                    $request->session()->invalidate();
-                    $request->session()->regenerateToken();
-                }
-
                 $route = $request->is('admin/login') ? 'admin.login' : 'login';
-
                 return redirect()
                     ->route($route)
                     ->with('csrf_expired', 'انتهت صلاحية جلسة تسجيل الدخول. تم تحديثها تلقائياً، حاول تسجيل الدخول مرة أخرى.');
+            }
+
+            if ($request->is('user/add-funds/manual')) {
+                return redirect()
+                    ->route('user.add-funds')
+                    ->with('csrf_expired', 'تم تحديث جلسة الدفع. أعد اختيار صورة الإيصال ثم أرسل الطلب مرة أخرى.');
             }
         }
 
