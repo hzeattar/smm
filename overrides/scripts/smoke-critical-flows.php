@@ -119,10 +119,6 @@ if (isset($exitCode)) {
     exit($exitCode);
 }
 
-// Full controller smoke test: authenticate a real active user and submit a generated
-// image through the same ManualDepositController used by the browser. This catches
-// validation, image processing, model/config and view-rendering regressions that a
-// raw DB insert cannot detect.
 $marker = 'smoke-e2e-' . bin2hex(random_bytes(5));
 $tmpPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $marker . '.jpg';
 $response = null;
@@ -163,6 +159,12 @@ try {
     $status = method_exists($response, 'getStatusCode') ? (int) $response->getStatusCode() : 0;
 
     if ($status !== 200) {
+        $body = method_exists($response, 'getContent') ? (string) $response->getContent() : '';
+        $plainBody = trim(preg_replace('/\s+/', ' ', strip_tags($body)) ?? '');
+        if ($plainBody !== '') {
+            fwrite(STDERR, "Manual deposit smoke response: " . mb_substr($plainBody, 0, 1600) . "\n");
+        }
+
         $logPath = storage_path('logs/laravel.log');
         $logTail = '';
         if (is_file($logPath)) {
