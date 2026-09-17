@@ -8,6 +8,13 @@ on:
       - docker/**
       - overrides/**
       - .github/workflows/docker-preflight.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - docker/**
+      - overrides/**
+      - .github/workflows/docker-preflight.yml
   workflow_dispatch:
 
 jobs:
@@ -17,6 +24,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: PHP syntax check for overrides
+        run: |
+          find overrides -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
       - name: Build production image
         run: docker build --progress=plain -t smm-preflight .
