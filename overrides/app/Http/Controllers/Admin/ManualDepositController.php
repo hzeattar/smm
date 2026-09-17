@@ -18,16 +18,16 @@ class ManualDepositController extends Controller
     public function store(Request $request)
     {
         try {
-            $validator = Validator::make($request->all(), [
+            // Validate scalar fields separately from the upload. Laravel 8's generic
+            // file rule can incorrectly reject programmatically-created UploadedFile
+            // instances used by our production smoke test, and it gives us less useful
+            // diagnostics for real browser upload errors.
+            $validator = Validator::make($request->only(['method_id', 'amount', 'sender_phone']), [
                 'method_id' => 'required|integer|exists:payment_methods,id',
                 'amount' => 'required|numeric|min:1',
                 'sender_phone' => ['required', 'string', 'max:80', 'regex:/^[0-9+\s-]{7,25}$/'],
-                'proof' => 'required|file|max:5120',
             ], [
                 'sender_phone.regex' => 'اكتب رقم الهاتف الذي تم التحويل منه بشكل صحيح.',
-                'proof.required' => 'يرجى إرفاق صورة إثبات التحويل.',
-                'proof.file' => 'ملف إثبات التحويل غير صالح.',
-                'proof.max' => 'حجم صورة إثبات التحويل يجب ألا يتجاوز 5 ميجابايت.',
             ]);
 
             if ($validator->fails()) {
@@ -59,18 +59,42 @@ class ManualDepositController extends Controller
             }
 
             $proof = $request->file('proof');
-            if (!$proof || !$proof->isValid()) {
+            if (!$proof) {
                 return response()->view('admin.deposit_failed', [
-                    'message' => 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.',
+                    'message' => 'يرجى إرفاق صورة إثبات التحويل.',
+                ], 422);
+            }
+
+            $uploadError = method_exists($proof, 'getError') ? (int) $proof->getError() : UPLOAD_ERR_OK;
+            if ($uploadError !== UPLOAD_ERR_OK) {
+                Log::warning('Manual deposit upload rejected by PHP', [
+                    'user_id' => $userId,
+                    'upload_error' => $uploadError,
+                ]);
+                return response()->view('admin.deposit_failed', [
+                    'message' => $this->uploadErrorMessage($uploadError),
+                ], 422);
+            }
+
+            $size = method_exists($proof, 'getSize') ? (int) $proof->getSize() : 0;
+            if ($size <= 0 || $size > 5 * 1024 * 1024) {
+                return response()->view('admin.deposit_failed', [
+                    'message' => $size > 5 * 1024 * 1024
+                        ? 'حجم صورة إثبات التحويل يجب ألا يتجاوز 5 ميجابايت.'
+                        : 'صورة إثبات التحويل فارغة أو غير قابلة للقراءة.',
                 ], 422);
             }
 
             $path = (string) $proof->getPathname();
+            if ($path === '' || !is_file($path) || !is_readable($path)) {
+                throw new \RuntimeException('Uploaded proof temporary file is missing or unreadable.');
+            }
+
             $imageInfo = @getimagesize($path);
             $detectedMime = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
             if (!in_array($detectedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
                 return response()->view('admin.deposit_failed', [
-                    'message' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP.',
+                    'message' => 'إثبات التحويل يجب أن يكون صورة JPG أو PNG أو WEBP حقيقية.',
                 ], 422);
             }
 
@@ -87,6 +111,10 @@ class ManualDepositController extends Controller
             $destination = $this->paymentDestination($method);
             $senderPhone = trim((string) $request->input('sender_phone'));
             $proofName = mb_substr((string) $proof->getClientOriginalName(), 0, 250);
+            if ($proofName === '') {
+                $proofName = 'deposit-proof.jpg';
+            }
+
             $reference = 'YD-' . now()->format('YmdHis') . '-' . $userId . '-' . strtoupper(bin2hex(random_bytes(3)));
             $notes = trim(implode("\n", [
                 'Yellow Duck manual deposit - pending admin approval.',
@@ -120,7 +148,11 @@ class ManualDepositController extends Controller
                     'updated_at' => now(),
                 ]);
 
-                DB::table('yellow_duck_deposit_proofs')->insert([
+                if ($transactionDbId <= 0) {
+                    throw new \RuntimeException('Manual deposit transaction insert did not return an id.');
+                }
+
+                $proofInserted = DB::table('yellow_duck_deposit_proofs')->insert([
                     'transaction_id' => $transactionDbId,
                     'mime' => $proofMime,
                     'filename' => $proofName,
@@ -128,6 +160,17 @@ class ManualDepositController extends Controller
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                if (!$proofInserted) {
+                    throw new \RuntimeException('Manual deposit proof insert returned false.');
+                }
+
+                $proofStored = DB::table('yellow_duck_deposit_proofs')
+                    ->where('transaction_id', $transactionDbId)
+                    ->exists();
+                if (!$proofStored) {
+                    throw new \RuntimeException('Manual deposit proof could not be verified after insert.');
+                }
 
                 DB::commit();
             } catch (Throwable $writeError) {
@@ -291,5 +334,24 @@ class ManualDepositController extends Controller
     {
         $name = strtolower((string) $method->name);
         return str_contains($name, 'vodafone') || str_contains($name, 'instapay') || str_contains($name, 'insta pay');
+    }
+
+    private function uploadErrorMessage(int $error): string
+    {
+        switch ($error) {
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return 'حجم صورة إثبات التحويل أكبر من الحد المسموح. اختر صورة أصغر من 5 ميجابايت.';
+            case UPLOAD_ERR_PARTIAL:
+                return 'لم يكتمل رفع صورة إثبات التحويل. أعد اختيار الصورة ثم حاول مرة أخرى.';
+            case UPLOAD_ERR_NO_FILE:
+                return 'يرجى إرفاق صورة إثبات التحويل.';
+            case UPLOAD_ERR_NO_TMP_DIR:
+            case UPLOAD_ERR_CANT_WRITE:
+            case UPLOAD_ERR_EXTENSION:
+                return 'تعذر رفع صورة الإثبات على الخادم حاليًا. حاول مرة أخرى أو تواصل مع الدعم.';
+            default:
+                return 'تعذر استلام صورة إثبات التحويل. اختر الصورة مرة أخرى.';
+        }
     }
 }
