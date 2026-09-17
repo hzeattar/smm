@@ -11,9 +11,20 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
 $requiredRoutes = [
+    'health',
     'user.add-funds',
     'user.manual-deposit',
     'user.transactions.index',
+    'user.transactions.show',
+    'user.orders.index',
+    'user.orders.store',
+    'user.orders.show',
+    'user.tickets.index',
+    'user.tickets.store',
+    'user.tickets.show',
+    'user.tickets.download',
+    'user.user-notifications.index',
+    'user.user-notifications.show',
     'admin.transactions.index',
     'admin.transactions.proof',
     'admin.manual-balance',
@@ -26,12 +37,48 @@ foreach ($requiredRoutes as $route) {
     }
 }
 
-$requiredTables = ['users', 'payment_methods', 'transactions', 'yellow_duck_deposit_proofs'];
+$forbiddenCustomerRoutes = [
+    'user.services.store',
+    'user.services.update',
+    'user.services.destroy',
+    'user.transactions.store',
+    'user.transactions.update',
+    'user.transactions.destroy',
+    'user.orders.update',
+    'user.orders.destroy',
+    'user.user-notifications.store',
+    'user.user-notifications.update',
+];
+
+foreach ($forbiddenCustomerRoutes as $route) {
+    if (Route::has($route)) {
+        fwrite(STDERR, "Critical smoke check failed: forbidden customer mutation route {$route} is exposed.\n");
+        exit(84);
+    }
+}
+
+$requiredTables = [
+    'users',
+    'payment_methods',
+    'transactions',
+    'yellow_duck_deposit_proofs',
+    'tickets',
+    'ticket_messages',
+    'yellow_duck_ticket_attachments',
+];
+
 foreach ($requiredTables as $table) {
     if (!Schema::hasTable($table)) {
         fwrite(STDERR, "Critical smoke check failed: missing table {$table}.\n");
         exit(82);
     }
+}
+
+try {
+    DB::select('SELECT 1');
+} catch (Throwable $e) {
+    fwrite(STDERR, "Critical smoke check failed: database SELECT 1 failed.\n");
+    exit(85);
 }
 
 $userId = DB::table('users')->orderBy('id')->value('id');
@@ -83,7 +130,7 @@ try {
         throw new RuntimeException('Proof persistence verification failed.');
     }
 
-    fwrite(STDOUT, "Critical smoke checks OK: routes, schema, transaction and proof persistence.\n");
+    fwrite(STDOUT, "Critical smoke checks OK: routes, authorization surface, schema, DB connectivity, transaction and proof persistence.\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "Critical smoke check failed: " . $e->getMessage() . "\n");
     $exitCode = 83;
