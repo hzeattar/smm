@@ -28,8 +28,8 @@ class UserNotificationController extends Controller
                 if (ctype_digit($search)) {
                     $builder->orWhere('id', (int) $search);
                 }
-                $builder->orWhere('title', 'like', '%' . $search . '%')
-                    ->orWhere('message', 'like', '%' . $search . '%');
+                $builder->orWhere('subject', 'like', '%' . $search . '%')
+                    ->orWhere('content', 'like', '%' . $search . '%');
             });
         }
 
@@ -46,17 +46,19 @@ class UserNotificationController extends Controller
         abort_unless(Auth::guard('admin')->check(), 403);
 
         $validated = $request->validate([
-            'user_id' => ['required','integer'],
-            'title' => ['nullable','string','max:190'],
-            'message' => ['required','string','max:10000'],
+            'user_id' => ['required','integer','exists:users,id'],
+            'subject' => ['required','string','max:190'],
+            'content' => ['required','string','max:10000'],
+            'icon' => ['nullable','string','max:190'],
             'is_for_admin' => ['nullable','boolean'],
             'viewed' => ['nullable','boolean'],
         ]);
 
         $notification = UserNotification::create([
             'user_id' => (int) $validated['user_id'],
-            'title' => $validated['title'] ?? null,
-            'message' => $validated['message'],
+            'subject' => $validated['subject'],
+            'content' => $validated['content'],
+            'icon' => $validated['icon'] ?? 'fa fa-fw fa-check-circle text-success',
             'is_for_admin' => (int) ($validated['is_for_admin'] ?? 0),
             'viewed' => (int) ($validated['viewed'] ?? 0),
         ]);
