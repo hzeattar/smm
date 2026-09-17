@@ -86,8 +86,6 @@ class PaymentMethodController extends Controller
             })
             ->firstOrFail();
 
-        // Customers only receive fields required to display/manual-pay through the method.
-        // Gateway credentials and environment/private data are never serialized to customer routes.
         return response()->json([
             'id' => $paymentMethod->id,
             'name' => $paymentMethod->name,
@@ -117,7 +115,7 @@ class PaymentMethodController extends Controller
         return response()->json($deleted, 200);
     }
 
-    private function validatedPayload(Request $request, $requireName = true)
+    private function validatedPayload(Request $request, bool $requireName = true): array
     {
         $rules = [
             'name' => [$requireName ? 'required' : 'sometimes', 'string', 'max:150'],
@@ -135,20 +133,37 @@ class PaymentMethodController extends Controller
         $validator = Validator::make($request->all(), $rules);
         $validator->validate();
 
-        $payload = [
-            'min' => (int) $request->input('min', 0),
-            'max' => (int) $request->input('max', 100000),
-            'fee' => (float) $request->input('fee', 0),
-            'status' => $request->input('status', 'active'),
-            'environment' => $request->input('environment', 'production'),
-            'api_key' => $request->input('api_key'),
-            'private_key' => $request->input('private_key') ?: '-',
-            'client_id' => $request->input('client_id'),
-            'image' => $request->input('image') ?: 'payment-manual.svg',
-        ];
+        if ($requireName) {
+            return [
+                'name' => (string) $request->input('name'),
+                'min' => (int) $request->input('min', 0),
+                'max' => (int) $request->input('max', 100000),
+                'fee' => (float) $request->input('fee', 0),
+                'status' => $request->input('status', 'active'),
+                'environment' => $request->input('environment', 'production'),
+                'api_key' => $request->input('api_key'),
+                'private_key' => $request->input('private_key') ?: '-',
+                'client_id' => $request->input('client_id'),
+                'image' => $request->input('image') ?: 'payment-manual.svg',
+            ];
+        }
 
-        if ($requireName || $request->has('name')) {
-            $payload['name'] = $request->input('name');
+        $payload = [];
+        foreach (['name', 'status', 'environment', 'api_key', 'client_id', 'image'] as $key) {
+            if ($request->exists($key)) {
+                $payload[$key] = $request->input($key);
+            }
+        }
+        foreach (['min', 'max'] as $key) {
+            if ($request->exists($key)) {
+                $payload[$key] = (int) $request->input($key, 0);
+            }
+        }
+        if ($request->exists('fee')) {
+            $payload['fee'] = (float) $request->input('fee', 0);
+        }
+        if ($request->exists('private_key')) {
+            $payload['private_key'] = $request->input('private_key') ?: '-';
         }
 
         return $payload;
