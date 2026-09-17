@@ -67,7 +67,7 @@ class TicketController extends Controller
             'email' => $validated['email'],
             'type' => $validated['type'],
             'subject' => $validated['subject'],
-            'message' => $validated['message'],
+            'message' => $this->sanitizeRichText($validated['message']),
         ];
 
         if ($request->hasFile('attachment')) {
@@ -111,7 +111,8 @@ class TicketController extends Controller
 
             TicketMessage::create([
                 'ticket_id' => $ticket->id,
-                'content' => $validated['content'],
+                'content' => $this->sanitizeRichText($validated['content']),
+                'response_by' => $isAdmin ? 'admin' : 'user',
             ]);
 
             $ticket->update(['status' => $isAdmin ? 'answered' : 'pending']);
@@ -156,5 +157,13 @@ class TicketController extends Controller
             $query->where('user_id', $userId);
         }
         return $query->firstOrFail();
+    }
+
+    private function sanitizeRichText(string $html): string
+    {
+        $clean = strip_tags($html, '<p><br><strong><b><em><i><u><ul><ol><li><blockquote><a>');
+        $clean = preg_replace('/\son\w+\s*=\s*(["\']).*?\1/iu', '', $clean) ?? $clean;
+        $clean = preg_replace('/javascript\s*:/iu', '', $clean) ?? $clean;
+        return $clean;
     }
 }
