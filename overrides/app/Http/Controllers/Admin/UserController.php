@@ -31,15 +31,24 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
-        $users = User::orderBy('id', 'desc')->paginate();
+        $query = User::orderBy('id', 'desc');
+        $search = trim((string) $request->input('search', ''));
+
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search) {
+                if (ctype_digit($search)) {
+                    $builder->orWhere('id', (int) $search);
+                }
+                $builder->orWhere('username', 'like', '%' . $search . '%')
+                    ->orWhere('firstname', 'like', '%' . $search . '%')
+                    ->orWhere('lastname', 'like', '%' . $search . '%')
+                    ->orWhere('email', 'like', '%' . $search . '%');
+            });
+        }
+
+        $users = $query->paginate(20)->appends($request->query());
+
         if ($request->api) {
-            if ($request->filled('search')) {
-                $users = $this->filter([
-                    'table' => 'users',
-                    'class' => User::class,
-                    'search' => $request->search,
-                ]);
-            }
             return response()->json($users, 200);
         }
 
@@ -134,7 +143,9 @@ class UserController extends Controller
             return response()->json($validator->messages(), 400);
         }
 
-        $data = $request->only(['username', 'firstname', 'lastname', 'email', 'status', 'funds']);
+        // Balance changes are intentionally excluded here. They must go through
+        // the audited balance-adjustment flow in AdminUserManagementController.
+        $data = $request->only(['username', 'firstname', 'lastname', 'email', 'status']);
         if ($request->filled('password')) {
             $data['password'] = Hash::make((string) $request->input('password'));
         }
