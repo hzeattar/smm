@@ -141,7 +141,7 @@ try {
         throw new RuntimeException('Could not authenticate smoke-test user.');
     }
 
-    $uploaded = new UploadedFile($tmpPath, $marker . '.jpg', 'image/jpeg', null, true);
+    $uploaded = new UploadedFile($tmpPath, $marker . '.jpg', 'image/jpeg', UPLOAD_ERR_OK, true);
     $request = Request::create(
         '/user/add-funds/manual',
         'POST',
