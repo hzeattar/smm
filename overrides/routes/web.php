@@ -3,9 +3,11 @@
 use App\Helpers\Helper;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
+use App\Http\Controllers\HealthController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\Web\IndexController;
 
+Route::get('/health', HealthController::class)->name('health');
 Route::get('/', [IndexController::class, 'index'])->name('welcome');
 Route::get('/terms-conditions', [IndexController::class, 'termsConditions'])->name('terms-conditions');
 Route::post('/contact-us', [IndexController::class, 'constactUs'])->name('contact-us');
