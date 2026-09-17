@@ -59,7 +59,7 @@ Route::prefix('admin')->middleware(['auth:admin', 'checkenv'])->name('admin.')->
     Route::apiResource('orders', OrderController::class);
     Route::apiResource('tickets', TicketController::class);
     Route::apiResource('user-notifications', UserNotificationController::class)->except(['update']);
-    Route::get('tickets/download/{file}', [TicketController::class, 'downloadAttachment']);
+    Route::get('tickets/download/{file}', [TicketController::class, 'downloadAttachment'])->name('tickets.download');
     Route::apiResource('faqs', FaqController::class);
     Route::apiResource('languages', LanguageController::class);
     Route::post('languages/store-values', [LanguageController::class, 'storeValues'])->name('languages.store-values');
@@ -84,15 +84,24 @@ Route::prefix('user')->middleware(['auth', 'is_verified'])->name('user.')->group
     Route::post('profil', [UserController::class, 'profil'])->name('post-profil');
     Route::get('add-funds', [PaymentController::class, 'addFunds'])->name('add-funds');
     Route::post('add-funds/manual', [ManualDepositController::class, 'store'])->name('manual-deposit');
-    Route::get('payment-methods/{id}', [PaymentMethodController::class, 'show']);
-    Route::apiResource('services', ServiceController::class);
-    Route::apiResource('transactions', TransactionController::class);
-    Route::apiResource('orders', OrderController::class);
-    Route::apiResource('tickets', TicketController::class);
+    Route::get('payment-methods/{id}', [PaymentMethodController::class, 'show'])->name('payment-methods.show');
+
+    // Customer-facing API routes are intentionally read/write limited. Admin-only
+    // update/delete actions remain available only under the authenticated admin prefix.
+    Route::apiResource('services', ServiceController::class)->only(['index', 'show']);
+    Route::apiResource('transactions', TransactionController::class)->only(['index', 'show']);
+    Route::apiResource('orders', OrderController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('tickets', TicketController::class)->only(['index', 'store', 'show', 'update']);
+    Route::apiResource('user-notifications', UserNotificationController::class)->only(['index', 'show', 'destroy']);
+
+    Route::get('tickets/download/{file}', [TicketController::class, 'downloadAttachment'])->name('tickets.download');
     Route::get('languages/set-language/{id}', [LanguageController::class, 'setLanguage'])->name('languages.set-language');
-    Route::apiResource('user-notifications', UserNotificationController::class)->except(['update']);
     Route::get('orders/services/{category}', [OrderController::class, 'getServices']);
 });
+
+Route::get('user', function () {
+    return redirect()->route('user.dashboard');
+})->name('user.home');
 
 Route::get('user/verify/email', [UserController::class, 'emailVerification'])->name('verification-email');
 Route::post('user/verify/email', [UserController::class, 'emailVerification'])->middleware(['auth', 'throttle:6,1'])->name('verification.resend');
