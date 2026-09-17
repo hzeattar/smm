@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   `user_id` bigint unsigned DEFAULT NULL,
   `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `user_agent` text COLLATE utf8mb4_unicode_ci,
-  `payload` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `payload` mediumtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `last_activity` int NOT NULL,
   PRIMARY KEY (`id`),
   KEY `sessions_user_id_index` (`user_id`),
@@ -37,7 +37,18 @@ CREATE TABLE IF NOT EXISTS `sessions` (
 SQL
     );
 
-    fwrite(STDOUT, "Persistent session table ready.\n");
+    // Older deployments created payload as TEXT. Browser POSTs can carry a larger
+    // serialized session after validation/flash data, so make the live schema robust
+    // instead of relying on CREATE TABLE IF NOT EXISTS to leave an old column unchanged.
+    $pdo->exec("ALTER TABLE `sessions` MODIFY `payload` MEDIUMTEXT COLLATE utf8mb4_unicode_ci NOT NULL");
+
+    $stmt = $pdo->query("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sessions' AND COLUMN_NAME = 'payload' LIMIT 1");
+    $payloadType = strtolower((string) $stmt->fetchColumn());
+    if ($payloadType !== 'mediumtext' && $payloadType !== 'longtext') {
+        throw new RuntimeException('Session payload column is not MEDIUMTEXT/LONGTEXT after bootstrap: ' . $payloadType);
+    }
+
+    fwrite(STDOUT, "Persistent session table ready. Payload={$payloadType}.\n");
     exit(0);
 } catch (Throwable $e) {
     fwrite(STDERR, "Session table bootstrap failed: ".$e->getMessage()."\n");
