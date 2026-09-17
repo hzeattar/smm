@@ -38,6 +38,12 @@ class PaymentMethodController extends Controller
 
         $paymentMethods = $query->orderBy('id', 'desc')->paginate();
 
+        if (!Auth::guard('admin')->check()) {
+            $paymentMethods->getCollection()->transform(function ($method) {
+                return $this->safeForUser($method);
+            });
+        }
+
         if ($request->api) {
             return response()->json($paymentMethods, 200);
         }
@@ -47,6 +53,8 @@ class PaymentMethodController extends Controller
 
     public function store(Request $request)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
+
         if ($request->has('exchange_rate') && !$request->filled('name')) {
             $data = $request->validate(['exchange_rate' => 'required|numeric|min:1|max:1000']);
             Setting::updateOrCreate(
@@ -58,22 +66,38 @@ class PaymentMethodController extends Controller
 
         $data = $this->validatedPayload($request);
         $paymentMethod = PaymentMethod::create($data);
-        return response()->json($paymentMethod, 200);
+        return response()->json($paymentMethod->makeVisible(['api_key','private_key','client_id','environment']), 200);
     }
 
     public function show($id)
     {
-        $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
-        if (Auth::guard('admin')->check()) {
+        $query = PaymentMethod::where('id', $id);
+        $isAdmin = Auth::guard('admin')->check();
+
+        if (!$isAdmin) {
+            $query->where('status', 'active')
+                ->where(function ($builder) {
+                    $builder->where('name', 'like', '%Vodafone%')
+                        ->orWhere('name', 'like', '%InstaPay%')
+                        ->orWhere('name', 'like', '%Insta Pay%');
+                });
+        }
+
+        $paymentMethod = $query->firstOrFail();
+
+        if ($isAdmin) {
             $paymentMethod->makeVisible(['api_key', 'private_key', 'client_id', 'environment']);
         } else {
-            $paymentMethod->makeVisible(['api_key', 'client_id', 'environment']);
+            $paymentMethod = $this->safeForUser($paymentMethod);
         }
+
         return response()->json($paymentMethod, 200);
     }
 
     public function update(Request $request, $id)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
+
         $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
         $paymentMethod->update($this->validatedPayload($request, false));
         $paymentMethod->makeVisible(['api_key', 'private_key', 'client_id', 'environment']);
@@ -82,6 +106,8 @@ class PaymentMethodController extends Controller
 
     public function destroy($id)
     {
+        abort_unless(Auth::guard('admin')->check(), 403);
+
         $paymentMethod = PaymentMethod::where('id', $id)->firstOrFail();
         $deleted = $paymentMethod->delete();
         return response()->json($deleted, 200);
@@ -105,17 +131,31 @@ class PaymentMethodController extends Controller
         $validator = Validator::make($request->all(), $rules);
         $validator->validate();
 
-        return [
-            'name' => $request->input('name'),
-            'min' => (int) $request->input('min', 0),
-            'max' => (int) $request->input('max', 100000),
-            'fee' => (float) $request->input('fee', 0),
-            'status' => $request->input('status', 'active'),
-            'environment' => $request->input('environment', 'production'),
-            'api_key' => $request->input('api_key'),
-            'private_key' => $request->input('private_key') ?: '-',
-            'client_id' => $request->input('client_id'),
-            'image' => $request->input('image') ?: 'payment-manual.svg',
-        ];
+        $payload = [];
+        foreach (['name','min','max','fee','status','environment','api_key','private_key','client_id','image'] as $key) {
+            if ($request->exists($key)) {
+                $payload[$key] = $request->input($key);
+            }
+        }
+
+        if ($requireName) {
+            $payload['name'] = $request->input('name');
+        }
+        if (!array_key_exists('min', $payload) && $requireName) $payload['min'] = 0;
+        if (!array_key_exists('max', $payload) && $requireName) $payload['max'] = 100000;
+        if (!array_key_exists('fee', $payload) && $requireName) $payload['fee'] = 0;
+        if (!array_key_exists('status', $payload) && $requireName) $payload['status'] = 'active';
+        if (!array_key_exists('environment', $payload) && $requireName) $payload['environment'] = 'production';
+        if (!array_key_exists('private_key', $payload) && $requireName) $payload['private_key'] = '-';
+        if (!array_key_exists('image', $payload) && $requireName) $payload['image'] = 'payment-manual.svg';
+
+        return $payload;
+    }
+
+    private function safeForUser(PaymentMethod $method): PaymentMethod
+    {
+        $method->makeHidden(['api_key', 'private_key', 'environment']);
+        $method->makeVisible(['client_id']);
+        return $method;
     }
 }
