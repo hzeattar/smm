@@ -20,10 +20,6 @@ import {
   Download,
   Image,
   Send,
-  Server,
-  Zap,
-  Database,
-  Activity,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -47,8 +43,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [usersList, setUsersList] = useState<User[]>([]);
   const [servicesList, setServicesList] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [providerInfo, setProviderInfo] = useState<any>(null);
-  const [syncingProvider, setSyncingProvider] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Proof image preview modal
@@ -82,7 +76,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [statsRes, ordRes, txRes, usrRes, srvRes, catRes, tickRes, provRes] = await Promise.all([
+      const [statsRes, ordRes, txRes, usrRes, srvRes, catRes, tickRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/orders?status=all', { headers: { 'x-user-role': 'admin' } }),
         fetch('/api/transactions', { headers: { 'x-user-role': 'admin' } }),
@@ -90,10 +84,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch('/api/services'),
         fetch('/api/categories'),
         fetch('/api/tickets', { headers: { 'x-user-role': 'admin' } }),
-        fetch('/api/admin/provider', { headers: { 'x-user-role': 'admin' } }),
       ]);
 
-      const [statsData, ordData, txData, usrData, srvData, catData, tickData, provData] = await Promise.all([
+      const [statsData, ordData, txData, usrData, srvData, catData, tickData] = await Promise.all([
         statsRes.json(),
         ordRes.json(),
         txRes.json(),
@@ -101,7 +94,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         srvRes.json(),
         catRes.json(),
         tickRes.json(),
-        provRes.json().catch(() => null),
       ]);
 
       setStats(statsData);
@@ -111,34 +103,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setServicesList(srvData || []);
       setCategories(catData || []);
       setTickets(tickData.tickets || []);
-      if (provData) setProviderInfo(provData);
     } catch (err) {
       console.error('Failed to load admin data', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSyncProvider = async () => {
-    setSyncingProvider(true);
-    setActionSuccess(null);
-    setActionError(null);
-    try {
-      const res = await fetch('/api/admin/provider/sync', {
-        method: 'POST',
-        headers: { 'x-user-role': 'admin' },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setActionSuccess(data.message || 'تمت مزامنة الطلبات مع المزود بنجاح');
-        fetchAdminData();
-      } else {
-        setActionError(data.error || 'فشلت المزامنة');
-      }
-    } catch {
-      setActionError('تعذر الاتصال بالمزود حالياً');
-    } finally {
-      setSyncingProvider(false);
     }
   };
 
@@ -1186,82 +1154,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </form>
 
-            {/* SMM Provider & Railway Deployment Status */}
-            <div className="mt-8 pt-6 border-t border-[#272c3d]">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-black text-white flex items-center gap-2">
-                  <Server className="w-4 h-4 text-[#f6b100]" />
-                  <span>تكامل خادم Railway ومزود SMMFansFaster</span>
-                </h3>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  متصل وجاهز
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-2.5 text-xs">
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400 flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-[#f6b100]" /> مزود SMM الخارجي:
-                  </span>
-                  <span className="font-bold text-white">SMMFansFaster (v2 API)</span>
-                </div>
-
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400">حالة المزود / هامش الربح:</span>
-                  <span className="font-semibold text-emerald-400">
-                    {providerInfo?.status || 'نشط (Active)'} | هامش +{providerInfo?.marginPercent || 10}%
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400">مفتاح API المزود:</span>
-                  <span className="font-mono text-slate-300 text-[11px]">
-                    {providerInfo?.apiKeyMasked || 'da3e5d...01a'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400 flex items-center gap-1.5">
-                    <Database className="w-3.5 h-3.5 text-blue-400" /> قاعدة البيانات / الجلسات:
-                  </span>
-                  <span className="text-slate-300 font-mono text-[11px]">
-                    yellow_duck_session_v5 (480 دقيقة)
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center text-slate-300">
-                  <span className="text-slate-400 flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-amber-400" /> المزامنة التلقائية:
-                  </span>
-                  <span className="text-slate-300">
-                    مفعلة (كل {providerInfo?.syncInterval || 120} ثانية)
-                  </span>
-                </div>
-
-                {providerInfo?.balance && typeof providerInfo.balance.balance !== 'undefined' && (
-                  <div className="flex justify-between items-center text-slate-300 pt-1 border-t border-[#1f2433]">
-                    <span className="text-slate-400">رصيد حسابك لدى SMMFansFaster:</span>
-                    <span className="font-black text-[#f6b100] text-sm">
-                      ${parseFloat(providerInfo.balance.balance).toFixed(2)} {providerInfo.balance.currency || 'USD'}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={handleSyncProvider}
-                  disabled={syncingProvider}
-                  className="w-full py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${syncingProvider ? 'animate-spin' : ''}`} />
-                  <span>{syncingProvider ? 'جاري فحص وتحديث الطلبات مع المزود...' : 'مزامنة حالة الطلبات يدوياً مع SMMFansFaster'}</span>
-                </button>
-              </div>
-            </div>
-
+            {/* Backup & Export */}
             <div className="mt-8 pt-6 border-t border-[#272c3d]">
               <h3 className="text-sm font-black text-white mb-2 flex items-center gap-2">
                 <Download className="w-4 h-4 text-[#f6b100]" />

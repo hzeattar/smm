@@ -16,10 +16,10 @@
     },
     {
       "id": 2,
-      "username": "duck_client",
-      "firstname": "أحمد",
-      "lastname": "السيد",
-      "email": "ahmed@yellowduck.com",
+      "username": "client",
+      "firstname": "عميل",
+      "lastname": "المنصة",
+      "email": "client@yellowduck.com",
       "password": "user123",
       "role": "user",
       "balance": 45.38,
@@ -206,7 +206,7 @@
       "quantity": 100,
       "charge": 0.12,
       "chargeEgp": 6.48,
-      "status": "processing",
+      "status": "completed",
       "createdAt": "2026-10-14 19:09:13"
     },
     {
@@ -240,7 +240,7 @@
     {
       "id": 501,
       "userId": 2,
-      "userName": "أحمد السيد (duck_client)",
+      "userName": "عميل المنصة (client)",
       "reference": "YD-20260215-2-99A1",
       "methodId": 1,
       "methodName": "Vodafone Cash",
@@ -254,7 +254,7 @@
     {
       "id": 502,
       "userId": 2,
-      "userName": "أحمد السيد (duck_client)",
+      "userName": "عميل المنصة (client)",
       "reference": "YD-20260305-2-4F2B",
       "methodId": 2,
       "methodName": "InstaPay Egypt",
@@ -294,7 +294,7 @@
     {
       "id": 101,
       "userId": 2,
-      "userName": "أحمد السيد (duck_client)",
+      "userName": "عميل المنصة (client)",
       "subject": "استفسار عن سرعة تنفيذ متابعين إنستغرام",
       "category": "order",
       "orderId": 1001,
@@ -304,7 +304,7 @@
         {
           "id": 1,
           "sender": "user",
-          "senderName": "أحمد السيد",
+          "senderName": "عميل المنصة",
           "message": "السلام عليكم، كم يستغرق بدء الطلب رقم #1001 عادة؟",
           "createdAt": "2026-03-01 12:15:00"
         },
@@ -320,5 +320,5 @@
       "updatedAt": "2026-03-01 12:20:00"
     }
   ],
-  "updatedAt": "2026-10-14T19:20:23.365Z"
+  "updatedAt": "2026-10-14T19:30:33.053Z"
 }

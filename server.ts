@@ -235,10 +235,10 @@ const users: User[] = [
   },
   {
     id: 2,
-    username: 'duck_client',
-    firstname: 'أحمد',
-    lastname: 'السيد',
-    email: 'ahmed@yellowduck.com',
+    username: 'client',
+    firstname: 'عميل',
+    lastname: 'المنصة',
+    email: 'client@yellowduck.com',
     password: 'user123',
     role: 'user',
     balance: 45.5,
@@ -439,7 +439,7 @@ const transactions: Transaction[] = [
   {
     id: 501,
     userId: 2,
-    userName: 'أحمد السيد (duck_client)',
+    userName: 'عميل المنصة (client)',
     reference: 'YD-20260215-2-99A1',
     methodId: 1,
     methodName: 'Vodafone Cash',
@@ -453,7 +453,7 @@ const transactions: Transaction[] = [
   {
     id: 502,
     userId: 2,
-    userName: 'أحمد السيد (duck_client)',
+    userName: 'عميل المنصة (client)',
     reference: 'YD-20260305-2-4F2B',
     methodId: 2,
     methodName: 'InstaPay Egypt',
@@ -470,7 +470,7 @@ const tickets: Ticket[] = [
   {
     id: 101,
     userId: 2,
-    userName: 'أحمد السيد (duck_client)',
+    userName: 'عميل المنصة (client)',
     subject: 'استفسار عن سرعة تنفيذ متابعين إنستغرام',
     category: 'order',
     orderId: 1001,
@@ -480,7 +480,7 @@ const tickets: Ticket[] = [
       {
         id: 1,
         sender: 'user',
-        senderName: 'أحمد السيد',
+        senderName: 'عميل المنصة',
         message: 'السلام عليكم، كم يستغرق بدء الطلب رقم #1001 عادة؟',
         createdAt: '2026-03-01 12:15:00',
       },
@@ -700,8 +700,8 @@ if (SMM_STATUS_SYNC_ENABLED) {
 }
 
 // Helper to get authenticated user from session cookie / header / query
-function getAuthUser(req: express.Request): User {
-  // 1. Explicit headers (e.g. from developer / admin test requests)
+function getAuthUser(req: express.Request): User | null {
+  // 1. Explicit headers (e.g. from developer / admin test requests or dashboard query)
   const customUserId = req.headers['x-user-id'] || req.query.current_user_id;
   if (customUserId) {
     const found = users.find((u) => u.id === Number(customUserId));
@@ -709,7 +709,7 @@ function getAuthUser(req: express.Request): User {
   }
 
   // 2. Cookie session: yellow_duck_session_v5 (or configured SESSION_COOKIE)
-  const rawCookie = req.cookies && req.cookies[SESSION_COOKIE];
+  const rawCookie = req.cookies && (req.cookies[SESSION_COOKIE] || req.cookies['yellow_duck_session_v5']);
   if (rawCookie) {
     try {
       let targetId: number | null = null;
@@ -726,12 +726,14 @@ function getAuthUser(req: express.Request): User {
     } catch {}
   }
 
-  // 3. Fallback by role header or default users
+  // 3. Fallback by role header ONLY if explicitly passed
   const role = req.headers['x-user-role'];
   if (role === 'admin') {
-    return users.find((u) => u.role === 'admin') || users[0];
+    return users.find((u) => u.role === 'admin') || null;
   }
-  return users.find((u) => u.id === 2) || users[1] || users[0];
+
+  // 4. Guest visitor (Not logged in)
+  return null;
 }
 
 // -------------------------------------------------------------
@@ -805,6 +807,12 @@ app.get(['/health', '/api/health'], (req, res) => {
 // Authentication endpoints
 app.get('/api/auth/me', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.json({
+      user: null,
+      exchangeRate,
+    });
+  }
   res.json({
     user: {
       id: user.id,
@@ -849,6 +857,7 @@ app.post('/api/auth/login', (req, res) => {
     httpOnly: false,
     secure: SESSION_SECURE_COOKIE,
     sameSite: 'lax',
+    path: '/',
   });
 
   res.json({
@@ -868,14 +877,15 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie(SESSION_COOKIE);
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  res.clearCookie('yellow_duck_session_v5', { path: '/' });
   res.json({ message: 'تم تسجيل الخروج بنجاح' });
 });
 
 // Admin Provider Endpoints (SMMFansFaster)
 app.get('/api/admin/provider', async (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
   }
 
@@ -904,7 +914,7 @@ app.get('/api/admin/provider', async (req, res) => {
 
 app.post('/api/admin/provider/sync', async (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
   }
 
@@ -995,6 +1005,9 @@ app.get('/api/services', (req, res) => {
 // Orders
 app.get('/api/orders', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً', orders: [], totalCount: 0 });
+  }
   const isAdmin = user.role === 'admin';
   const { search, status } = req.query;
 
@@ -1024,6 +1037,9 @@ app.get('/api/orders', (req, res) => {
 
 app.post('/api/orders', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً لتنفيذ الطلب' });
+  }
   const { service_id, quantity, link, notes } = req.body;
 
   const service = services.find((s) => s.id === Number(service_id) && s.status === 'active');
@@ -1088,6 +1104,9 @@ app.post('/api/orders', (req, res) => {
 // Mass Order (Bulk Order) endpoint
 app.post('/api/orders/mass', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً لتنفيذ الطلبات الجماعية.' });
+  }
   const { massData } = req.body;
 
   if (!massData || typeof massData !== 'string') {
@@ -1219,6 +1238,9 @@ app.get('/api/payment-methods', (req, res) => {
 // Deposit endpoint
 app.post('/api/add-funds/manual', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً لشحن الرصيد' });
+  }
   const { method_id, amount, sender_phone, proof_image, notes } = req.body;
 
   const method = paymentMethods.find((m) => m.id === Number(method_id) && m.status === 'active');
@@ -1268,6 +1290,9 @@ app.post('/api/add-funds/manual', (req, res) => {
 // Transactions list
 app.get('/api/transactions', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول لعرض المعاملات', transactions: [], exchangeRate });
+  }
   const isAdmin = user.role === 'admin';
 
   let list = isAdmin ? [...transactions] : transactions.filter((t) => t.userId === user.id);
@@ -1282,7 +1307,7 @@ app.get('/api/transactions', (req, res) => {
 // Admin Approve Deposit
 app.post('/api/admin/transactions/:id/approve', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك بإجراء هذه العملية' });
   }
 
@@ -1316,7 +1341,7 @@ app.post('/api/admin/transactions/:id/approve', (req, res) => {
 // Admin Reject Deposit
 app.post('/api/admin/transactions/:id/reject', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك بإجراء هذه العملية' });
   }
 
@@ -1342,7 +1367,7 @@ app.post('/api/admin/transactions/:id/reject', (req, res) => {
 // Admin Users Management
 app.get('/api/admin/users', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1364,7 +1389,7 @@ app.get('/api/admin/users', (req, res) => {
 // Admin Adjust User Balance
 app.post('/api/admin/users/:id/balance', (req, res) => {
   const admin = getAuthUser(req);
-  if (admin.role !== 'admin') {
+  if (!admin || admin.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1414,7 +1439,7 @@ app.post('/api/admin/users/:id/balance', (req, res) => {
 // Admin Services CRUD
 app.post('/api/admin/services', (req, res) => {
   const admin = getAuthUser(req);
-  if (admin.role !== 'admin') {
+  if (!admin || admin.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1448,7 +1473,7 @@ app.get('/api/settings', (req, res) => {
 
 app.post('/api/admin/settings/rate', (req, res) => {
   const admin = getAuthUser(req);
-  if (admin.role !== 'admin') {
+  if (!admin || admin.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1501,6 +1526,9 @@ app.get('/api/stats', (req, res) => {
 // Support Tickets API
 app.get('/api/tickets', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول لعرض التذاكر', tickets: [] });
+  }
   const isAdmin = user.role === 'admin';
   const userTickets = isAdmin ? [...tickets] : tickets.filter((t) => t.userId === user.id);
   userTickets.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -1509,6 +1537,9 @@ app.get('/api/tickets', (req, res) => {
 
 app.post('/api/tickets', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول لفتح تذكرة' });
+  }
   const { subject, category, orderId, message, priority } = req.body;
 
   if (!subject || !message) {
@@ -1545,6 +1576,9 @@ app.post('/api/tickets', (req, res) => {
 
 app.post('/api/tickets/:id/reply', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول للرد' });
+  }
   const ticketId = Number(req.params.id);
   const { message } = req.body;
 
@@ -1578,7 +1612,7 @@ app.post('/api/tickets/:id/reply', (req, res) => {
 
 app.patch('/api/admin/tickets/:id/status', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1598,6 +1632,9 @@ app.patch('/api/admin/tickets/:id/status', (req, res) => {
 // User Profile Update
 app.post('/api/user/profile', (req, res) => {
   const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ error: 'يرجى تسجيل الدخول لتعديل الملف الشخصي' });
+  }
   const { firstname, lastname, email, avatar, password } = req.body;
 
   if (firstname) user.firstname = firstname.trim();
@@ -1627,7 +1664,7 @@ app.post('/api/user/profile', (req, res) => {
 // Admin Data Export
 app.get('/api/admin/export', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
@@ -1648,7 +1685,7 @@ app.get('/api/admin/export', (req, res) => {
 // Admin Data Import / Restore
 app.post('/api/admin/import', (req, res) => {
   const user = getAuthUser(req);
-  if (user.role !== 'admin') {
+  if (!user || user.role !== 'admin') {
     return res.status(403).json({ error: 'غير مصرح لك' });
   }
 
