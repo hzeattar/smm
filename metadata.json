@@ -1,0 +1,8 @@
+{
+  "name": "Yellow Duck SMM",
+  "description": "منصة البطة الصفرا لخدمات السوشيال ميديا - لوحة إدارة وطلب خدمات المتابعين والتفاعلات مع بوابات الدفع فودافون كاش وإنستاباي",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

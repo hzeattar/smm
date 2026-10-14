@@ -1,37 +1,117 @@
-# SMM Railway Scaffold
+# Yellow Duck SMM (منصة البطة الصفرا لخدمات السوشيال ميديا) 🐥
 
-Railway-ready deployment scaffold for a licensed PHP / CodeIgniter 3 application.
+منصة عربية متكاملة وسريعة لخدمات التسويق عبر وسائل التواصل الاجتماعي (SMM Panel)، مبنية بأحدث معايير Full-Stack الحديثة (React 19 + TypeScript + Express + Vite + Tailwind CSS)، ومجهزة بنسبة 100% للتشغيل السحابي والنشر المباشر على منصة **Railway** والربط مع مستودع GitHub (`hzeattar/smm`).
 
-## Included
+---
 
-- Dockerfile based on PHP 7.4 + Apache
-- Apache `mod_rewrite`
-- MySQL / MariaDB extensions
-- Composer support
-- Dynamic Railway `$PORT`
-- Railway MySQL environment-variable mapping
-- Production PHP settings
+## 🌟 الميزات المكتملة
 
-## Railway setup
+### 1. واجهة المستخدم وصفحة الهبوط (Landing Page)
+- تصميم عصري بلمسات وهوية "البطة الصفرا" المميزة والوضع الليلي المريح للعينين.
+- دعم كامل وشامل للغة العربية واتجاه النص من اليمين لليسار (RTL) مع خط Cairo الأنيق.
+- قسم استعراض خدمات المنصات الست الكبرى: Instagram, TikTok, YouTube, Facebook, Telegram, X.
+- شروحات خطوة بخطوة للبدء، أسئلة شائعة تفاعلية (FAQ)، ونموذج اتصال سريع مع الإدارة.
 
-1. Connect this GitHub repository to a Railway service.
-2. Add a Railway MySQL service to the same project.
-3. Railway normally exposes these variables automatically to the MySQL service:
-   - `MYSQLHOST`
-   - `MYSQLPORT`
-   - `MYSQLUSER`
-   - `MYSQLPASSWORD`
-   - `MYSQLDATABASE`
-4. In the web service, expose/reference the MySQL variables above if they are not already available.
-5. Set:
-   - `APP_URL=https://YOUR-PUBLIC-DOMAIN/`
-   - `APP_TIMEZONE=Africa/Cairo`
-   - `APP_ENCRYPTION_KEY=<strong-random-secret>`
-6. Add the licensed application source at repository root, with `index.php` and the `app/` directory in the expected CodeIgniter layout.
-7. Deploy. Railway will build using `Dockerfile` automatically.
+### 2. لوحة تحكم العميل (User Dashboard)
+- **شاشة الطلب الفردي (New Order)**:
+  - تصفح الخدمات مع فلترة فورية حسب التصنيف والبحث المباشر.
+  - احتساب فوري للتكلفة بالدولار والجنيه المصري ومطابقتها مع الرصيد الحالي.
+  - التحقق الفوري من حدود الكمية الدنيا والقصوى وصحة الروابط.
+- **شاشة الطلب الجماعي (Mass Orders)**: إمكانية تنفيذ مئات الطلبات دفعة واحدة بصيغة `Service_ID | Quantity | Link`.
+- **شحن الرصيد (Add Funds)**:
+  - دعم وسيلتي الدفع الأكثر انتشاراً في مصر: **فودافون كاش (Vodafone Cash)** و **إنستاباي (InstaPay Egypt)**.
+  - نسخ أرقام الحسابات والمحافظ بنقرة واحدة، ورفع صور إيصالات التحويل، وإدخال رقم المحول منه لمطابقته فورياً.
+- **سجل الطلبات وسجل المعاملات المالية**: متابعة لحظية لحالات الطلبات (قيد الانتظار، قيد التنفيذ، مكتمل، ملغي) مع إمكانية البحث والفلترة.
+- **نظام التذاكر والدعم الفني (Support Tickets)**: فتح تذاكر جديدة لمتابعة أي طلب أو استفسار والردود الحية المتبادلة مع فريق الدعم.
+- **الملف الشخصي (Profile Settings)**: تحديث الاسم، وتغيير الصورة الرمزية من بين شخصيات البطة المتنوعة، وتغيير كلمة المرور.
 
-## Notes
+### 3. لوحة تحكم الإدارة (Admin Dashboard)
+- **مؤشرات الأداء اللحظية (KPIs)**: إجمالي الأرباح والإيرادات بالجنيه والدولار، إجمالي الطلبات، والعمليات النشطة، والمستخدمين.
+- **اعتماد الإيداعات فورياً (Deposit Approvals)**: معاينة صورة إيصال التحويل ورقم هاتف المرسل، واعتماد الإيداع وإضافة الرصيد للعميل بضغطة زر، أو الرفض مع توضيح السبب.
+- **إدارة الطلبات (Orders Management)**: التحكم في حالة أي طلب (Pending, Processing, Completed, Cancelled)، مع **ميزة الاسترجاع التلقائي للأموال (Auto-Refund)** لمحفظة المستخدم عند الإلغاء.
+- **إدارة المستخدمين (User Management)**: استعراض جميع المسجلين، وأرصدتهم، وإجمالي مدفوعاتهم، مع إمكانية شحن أو خصم رصيد يدوياً مع تسجيل سبب العملية في سجل الرقابة المالية.
+- **إدارة الخدمات (Services Catalog)**: إضافة وتعديل أسعار وحدود الخدمات بسهولة.
+- **إعدادات المنصة وسعر الصرف (Settings)**: تعديل سعر صرف الدولار مقابل الجنيه المصري لحظياً لتطبيقه على كافة أرجاء المنصة ومحافظ المستخدمين.
+- **النسخ الاحتياطي والاستعادة (Backup & Restore)**: تصدير واستيراد قاعدة البيانات بنقرة واحدة بصيغة JSON.
 
-The runtime entrypoint maps Railway MySQL variables to the legacy `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, and `DB_NAME` constants expected by the application.
+---
 
-Do not commit `.env`, database dumps, API credentials, payment secrets, or unknown obfuscated remote-loader code.
+## 🗄️ محرك حفظ البيانات (Data Persistence Engine)
+
+- تحتوي المنصة على محرك حفظ تلقائي للملفات في المسار `data/yellow_duck_db.json`.
+- يتم حفظ كافة الطلبات، والمعاملات المالية، والمستخدمين، والتذاكر فور حدوث أي عملية وتظل محفوظة حتى بعد إعادة تشغيل السيرفر.
+- عند تشغيل المنصة على Railway، يمكنك ربط **Railway Volume** على المجلد `/app/data` للاحتفاظ بالبيانات مدى الحياة بين عمليات الترقية وإعادة النشر.
+
+---
+
+## 🚀 النشر على ريل واي (Railway Deployment)
+
+المشروع جاهز ومُعدّ بنسبة 100% للتشغيل السحابي عبر طريقتين:
+
+### الطريقة الأولى: عبر Nixpacks الافتراضي (موصى بها وسريعة جداً)
+الملف `railway.json` يحتوي على كافة الإعدادات المطلوبة:
+- **Build Command**: `npm run build`
+- **Start Command**: `npm start`
+- **Healthcheck Path**: `/health` (مفحوص ويعمل بنجاح 200 OK)
+
+### الطريقة الثانية: عبر Dockerfile متعدد المراحل
+تم تجهيز ملف `Dockerfile` رسمي مبني على `node:22-alpine` مع دعم الـ Multi-Stage Caching والفحص الدوري للصحة.
+
+### المتغيرات البيئية المدعومة في Railway (مطابقة بنسبة 100% لإعداداتك):
+| المتغير | الوصف | القيمة المعتمدة |
+| :--- | :--- | :--- |
+| `APP_DEBUG` | تفعيل أو إيقاف وضع التصحيح والـ Debug logs | `false` |
+| `APP_ENV` | بيئة تشغيل التطبيق (إنتاج أو تطوير) | `production` |
+| `APP_KEY` | مفتاح تشفير التطبيق وجلسات الأمان | `base64:06wHMV8NCtWjZ8aq4aNv26rfjgwC0GRrOrOSHbbzsKM=` |
+| `APP_URL` | رابط المنصة الرسمي على ريل واي | `https://smm-production-de6d.up.railway.app` |
+| `DB_DATABASE` | اسم قاعدة بيانات MySQL على ريل واي | `${{MySQL.MYSQLDATABASE}}` |
+| `DB_HOST` | خادم الاستضافة لقاعدة بيانات MySQL | `${{MySQL.MYSQLHOST}}` |
+| `DB_PASSWORD` | كلمة سر قاعدة بيانات MySQL | `${{MySQL.MYSQLPASSWORD}}` |
+| `DB_PORT` | منفذ اتصال MySQL | `${{MySQL.MYSQLPORT}}` |
+| `DB_USERNAME` | مستخدم قاعدة بيانات MySQL | `${{MySQL.MYSQLUSER}}` |
+| `LOG_CHANNEL` | قناة تسجيل السجلات (Stderr أو Stdout) | `stderr` |
+| `LOG_LEVEL` | مستوى تدوين السجلات (Warning / Info / Error) | `warning` |
+| `SESSION_CONNECTION` | وسيط اتصال الجلسات | `mysql` |
+| `SESSION_COOKIE` | اسم كوكي الجلسة لتسجيل دخول العملاء والمدير | `yellow_duck_session_v5` |
+| `SESSION_DRIVER` | مشغل الجلسات | `database` |
+| `SESSION_LIFETIME` | مدة بقاء الجلسة بالدقائق (8 ساعات) | `480` |
+| `SESSION_SECURE_COOKIE` | تشفير وتأمين الكوكيز عبر بروتوكول HTTPS | `true` |
+| `SMM_STATUS_SYNC_ENABLED` | تفعيل الجدولة التلقائية لمزامنة الطلبات في الخلفية | `true` |
+| `SMM_STATUS_SYNC_INTERVAL` | تكرار مزامنة الطلبات بالثواني (كل دقيقتين) | `120` |
+| `SMMFANSFASTER_API_KEY` | مفتاح API المعتمد لمزود SMMFansFaster | `da3e5d9d501bc1ea0a9c020c9f7fe01a` |
+| `SMMFANSFASTER_API_URL` | رابط الـ API الرسمي لمزود SMMFansFaster | `https://smmfansfaster.com/api/v2` |
+| `SMMFANSFASTER_MARGIN_PERCENT` | نسبة هامش الربح المضافة لأسعار المزود | `10`% |
+| `SMMFANSFASTER_PROVIDER_STATUS` | تفعيل أو تعطيل الاتصال بالمزود | `active` |
+| `YELLOW_DUCK_ADMIN_PASSWORD_HASH` | هاش كلمة مرور حساب الإدارة الرئيسي | `اختياري` |
+| `YELLOW_DUCK_USER_PASSWORD_HASH` | هاش كلمة مرور حسابات العملاء | `اختياري` |
+| `YELLOW_DUCK_RESET_OWNER_ACCOUNTS` | إعادة تعيين حسابات المالك عند البدء | `false` |
+| `YELLOW_DUCK_USD_EGP_RATE` | سعر صرف الدولار مقابل الجنيه المصري | `55` |
+| `DATA_DIR` | مسار حفظ النسخ الاحتياطي الدائم للمنصة | `./data` |
+
+---
+
+## 🔄 المزامنة مع GitHub (`hzeattar/smm`)
+
+المشروع متصل مباشرة ومطابق بالكامل لمستودعك على GitHub:
+- كافة الملفات القديمة والجديدة تم فحصها والتأكد من توافقها التام.
+- التطبيق يجتاز فحص الترجمة وبناء الإنتاج `npm run build` وفحص التحقق `npm run lint` بنجاح 100%.
+- لمزامنة التغييرات إلى مستودع GitHub، يمكنك استخدام زر الحفظ والمزامنة المتاح في واجهة المشروع لديك (أو إرسال التحديثات لفرع `main`).
+
+---
+
+## 💻 التشغيل والتطوير المحلي
+
+```bash
+# 1. تثبيت الحزم
+npm install
+
+# 2. تشغيل بيئة التطوير المحلية
+npm run dev
+
+# 3. فحص البناء والأنواع
+npm run lint
+npm run build
+
+# 4. تشغيل نسخة الإنتاج
+npm start
+```

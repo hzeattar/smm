@@ -1,58 +1,46 @@
-FROM ubuntu:22.04
+# ==============================================================================
+# 🐥 Yellow Duck SMM - Multi-stage Production Dockerfile for Railway & Cloud
+# ==============================================================================
 
-ARG SMMBOOSTER_COMMIT=0315d0631bb7ac354cae817514eced0b9dc1bcc7
+FROM node:22-alpine AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    APACHE_DOCUMENT_ROOT=/var/www/html/public \
-    COMPOSER_ALLOW_SUPERUSER=1 \
-    COMPOSER_MEMORY_LIMIT=-1 \
-    COMPOSER_PROCESS_TIMEOUT=2000
+WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        apache2 libapache2-mod-php8.1 \
-        php8.1-cli php8.1-common php8.1-mysql php8.1-curl php8.1-mbstring \
-        php8.1-xml php8.1-zip php8.1-gd php8.1-bcmath php8.1-opcache \
-        git unzip ca-certificates curl \
-    && a2enmod rewrite headers expires \
-    && sed -ri 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \
-    && rm -rf /var/lib/apt/lists/*
+# Install build dependencies
+COPY package*.json ./
+RUN npm install
 
-COPY --from=composer:2.2 /usr/bin/composer /usr/local/bin/composer
+# Copy source code and build frontend
+COPY . .
+RUN npm run build
 
-WORKDIR /var/www/html
+# Runner stage
+FROM node:22-alpine AS runner
 
-# Pin the exact upstream revision so future upstream changes cannot silently
-# alter a Railway build. Keep the upstream SQL dump privately inside the image
-# only as a schema-only recovery source; it is never served or imported as data.
-RUN git clone --no-tags https://github.com/mediarayek-me/smmbooster.git /tmp/smmbooster \
-    && cd /tmp/smmbooster \
-    && git checkout "${SMMBOOSTER_COMMIT}" \
-    && cp -a /tmp/smmbooster/. /var/www/html/ \
-    && rm -rf /tmp/smmbooster /var/www/html/.git \
-    && mkdir -p /opt/smm \
-    && cp /var/www/html/smmstore_test.sql /opt/smm/schema.sql \
-    && mv /var/www/html/artisan /var/www/html/artisan.real \
-    && rm -f /var/www/html/api-purchasecode.php /var/www/html/smmstore_test.sql
+WORKDIR /app
 
-COPY overrides/ /var/www/html/
-COPY docker/000-default.conf /etc/apache2/sites-available/000-default.conf
-COPY docker/php.ini /etc/php/8.1/apache2/conf.d/99-railway.ini
-COPY docker/php.ini /etc/php/8.1/cli/conf.d/99-railway.ini
-COPY docker/entrypoint.sh /usr/local/bin/railway-entrypoint
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOST=0.0.0.0
 
-# Keep the upstream lockfile intact. Laravel 8.32 predates PHP 8.1 and forces
-# error_reporting(-1) during bootstrap; mask deprecation-only notices so they
-# cannot become fatal ErrorExceptions. No application/business logic is changed.
-RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
-    && rm -rf vendor \
-    && composer install --no-dev --prefer-dist --no-interaction --no-progress --no-scripts --optimize-autoloader \
-    && find /var/www/html/app /var/www/html/routes /var/www/html/scripts -type f -name '*.php' -print0 | xargs -0 -n1 php -l \
-    && php -r '$p="vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/HandleExceptions.php"; $s=file_get_contents($p); $s2=str_replace("error_reporting(-1);", "error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);", $s, $n); if ($n < 1) { fwrite(STDERR, "Laravel PHP 8.1 compatibility patch target not found\n"); exit(1); } file_put_contents($p, $s2);' \
-    && php -r 'require "vendor/autoload.php"; if (!class_exists("Illuminate\\Support\\Collection")) { fwrite(STDERR, "Illuminate Collection autoload preflight failed\n"); exit(1); } echo "Composer autoload preflight OK\n";' \
-    && chmod +x /usr/local/bin/railway-entrypoint /var/www/html/artisan \
-    && chown -R www-data:www-data storage bootstrap/cache
+# Copy node_modules and built assets
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
-EXPOSE 8080
-ENTRYPOINT ["railway-entrypoint"]
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+# Create data directory for file persistence
+RUN mkdir -p /app/data
+
+# Expose server port
+EXPOSE 3000
+
+# Health check endpoint verification
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1
+
+# Start full-stack server
+CMD ["npm", "start"]

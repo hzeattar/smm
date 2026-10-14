@@ -1,0 +1,324 @@
+{
+  "exchangeRate": 54,
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "firstname": "مدير",
+      "lastname": "البطة الصفرا",
+      "email": "admin@yellowduck.com",
+      "password": "admin",
+      "role": "admin",
+      "balance": 850,
+      "avatar": "duck-cool.jpg",
+      "status": "active",
+      "createdAt": "2026-01-01 10:00:00"
+    },
+    {
+      "id": 2,
+      "username": "duck_client",
+      "firstname": "أحمد",
+      "lastname": "السيد",
+      "email": "ahmed@yellowduck.com",
+      "password": "user123",
+      "role": "user",
+      "balance": 45.38,
+      "avatar": "duck-happy.jpg",
+      "status": "active",
+      "createdAt": "2026-02-15 14:30:00"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "إنستغرام - Instagram",
+      "slug": "instagram",
+      "icon": "/images/platforms/instagram.svg",
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "name": "تيك توك - TikTok",
+      "slug": "tiktok",
+      "icon": "/images/platforms/tiktok.svg",
+      "status": "active"
+    },
+    {
+      "id": 3,
+      "name": "يوتيوب - YouTube",
+      "slug": "youtube",
+      "icon": "/images/platforms/youtube.svg",
+      "status": "active"
+    },
+    {
+      "id": 4,
+      "name": "فيسبوك - Facebook",
+      "slug": "facebook",
+      "icon": "/images/platforms/facebook.svg",
+      "status": "active"
+    },
+    {
+      "id": 5,
+      "name": "تيليجرام - Telegram",
+      "slug": "telegram",
+      "icon": "/images/platforms/telegram.svg",
+      "status": "active"
+    },
+    {
+      "id": 6,
+      "name": "إكس - X (Twitter)",
+      "slug": "x",
+      "icon": "/images/platforms/x.svg",
+      "status": "active"
+    }
+  ],
+  "services": [
+    {
+      "id": 101,
+      "categoryId": 1,
+      "name": "متابعين إنستغرام جودة فائقة [ضمان 30 يوم - سرعة عالية]",
+      "type": "Default",
+      "rate": 1.2,
+      "min": 100,
+      "max": 50000,
+      "description": "متابعين حقيقيين مع تعويض تلقائي لمدة 30 يوم في حال حدوث أي نقص.",
+      "status": "active"
+    },
+    {
+      "id": 102,
+      "categoryId": 1,
+      "name": "إعجابات إنستغرام فورية [حسابات نشطة - سرعة قصوى]",
+      "type": "Default",
+      "rate": 0.45,
+      "min": 50,
+      "max": 100000,
+      "description": "تبدأ فور تقديم الطلب بمعدل 10 آلاف إعجاب بالساعة.",
+      "status": "active"
+    },
+    {
+      "id": 103,
+      "categoryId": 1,
+      "name": "مشاهدات ريلز إنستغرام سريعة مع ظهور في الاكسبلور",
+      "type": "Default",
+      "rate": 0.15,
+      "min": 500,
+      "max": 500000,
+      "description": "مشاهدات تساعد الفيديو على الصعود في الاكسبلور واقتراحات إنستغرام.",
+      "status": "active"
+    },
+    {
+      "id": 201,
+      "categoryId": 2,
+      "name": "مشاهدات تيك توك فائقة السرعة [بدء فوري]",
+      "type": "Default",
+      "rate": 0.08,
+      "min": 1000,
+      "max": 1000000,
+      "description": "أرخص وأسرع مشاهدات تيك توك، تبدأ خلال ثوانٍ من الطلب.",
+      "status": "active"
+    },
+    {
+      "id": 202,
+      "categoryId": 2,
+      "name": "متابعين تيك توك حسابات حقيقية عربية وأجنبية [ضمان 60 يوم]",
+      "type": "Default",
+      "rate": 2.8,
+      "min": 100,
+      "max": 30000,
+      "description": "متابعين ذوو ملفات شخصية كاملة، يساعد على فتح البث المباشر وزيادة الثقة.",
+      "status": "active"
+    },
+    {
+      "id": 203,
+      "categoryId": 2,
+      "name": "إعجابات تيك توك سريعة ومستقرة",
+      "type": "Default",
+      "rate": 0.75,
+      "min": 100,
+      "max": 50000,
+      "description": "لايكات تيك توك ترفع نسبة وصول المقاطع.",
+      "status": "active"
+    },
+    {
+      "id": 301,
+      "categoryId": 3,
+      "name": "مشاهدات يوتيوب آمنة لتحقيق شروط الربح [مدة بقاء مرتفعة]",
+      "type": "Default",
+      "rate": 2.9,
+      "min": 500,
+      "max": 100000,
+      "description": "مشاهدات حقيقية متوافقة مع إرشادات يوتيوب AdSense.",
+      "status": "active"
+    },
+    {
+      "id": 302,
+      "categoryId": 3,
+      "name": "مشتركين قنوات يوتيوب غير متناقصين [ضمان 90 يوم]",
+      "type": "Default",
+      "rate": 14,
+      "min": 50,
+      "max": 5000,
+      "description": "مشتركون نشطون، ثابتون ومثاليون لإكمال شرط الـ 1000 مشترك.",
+      "status": "active"
+    },
+    {
+      "id": 401,
+      "categoryId": 4,
+      "name": "متابعين وإعجابات صفحات فيسبوك [ضمان دائم]",
+      "type": "Default",
+      "rate": 2.1,
+      "min": 100,
+      "max": 20000,
+      "description": "زيادة متابعي صفحة الفيسبوك العامة لتوثيق الصفحة وزيادة المصداقية.",
+      "status": "active"
+    },
+    {
+      "id": 501,
+      "categoryId": 5,
+      "name": "أعضاء قنوات ومجموعات تيليجرام [ثابتون وغير متناقصين]",
+      "type": "Default",
+      "rate": 1.6,
+      "min": 100,
+      "max": 50000,
+      "description": "أعضاء بجودة عالية لقنوات التوصيات والأخبار والتجارة.",
+      "status": "active"
+    },
+    {
+      "id": 601,
+      "categoryId": 6,
+      "name": "متابعين منصة إكس (تويتر) حسابات بريميوم [ضمان 30 يوم]",
+      "type": "Default",
+      "rate": 4.5,
+      "min": 100,
+      "max": 10000,
+      "description": "متابعون متفاعلون للملفات الشخصية وحسابات المشاريع على X.",
+      "status": "active"
+    }
+  ],
+  "orders": [
+    {
+      "id": 1003,
+      "userId": 2,
+      "serviceId": 101,
+      "serviceName": "متابعين إنستغرام جودة فائقة [ضمان 30 يوم - سرعة عالية]",
+      "categoryName": "إنستغرام - Instagram",
+      "link": "https://instagram.com/yellowduck",
+      "quantity": 100,
+      "charge": 0.12,
+      "chargeEgp": 6.48,
+      "status": "processing",
+      "createdAt": "2026-10-14 19:09:13"
+    },
+    {
+      "id": 1001,
+      "userId": 2,
+      "serviceId": 101,
+      "serviceName": "متابعين إنستغرام جودة فائقة [ضمان 30 يوم - سرعة عالية]",
+      "categoryName": "إنستغرام - Instagram",
+      "link": "https://instagram.com/yellow_duck_test",
+      "quantity": 1000,
+      "charge": 1.2,
+      "chargeEgp": 66,
+      "status": "completed",
+      "createdAt": "2026-03-01 12:10:00"
+    },
+    {
+      "id": 1002,
+      "userId": 2,
+      "serviceId": 201,
+      "serviceName": "مشاهدات تيك توك فائقة السرعة [بدء فوري]",
+      "categoryName": "تيك توك - TikTok",
+      "link": "https://www.tiktok.com/@creator/video/123456789",
+      "quantity": 5000,
+      "charge": 0.4,
+      "chargeEgp": 22,
+      "status": "completed",
+      "createdAt": "2026-03-10 16:45:00"
+    }
+  ],
+  "transactions": [
+    {
+      "id": 501,
+      "userId": 2,
+      "userName": "أحمد السيد (duck_client)",
+      "reference": "YD-20260215-2-99A1",
+      "methodId": 1,
+      "methodName": "Vodafone Cash",
+      "amountEgp": 1100,
+      "amountUsd": 20,
+      "senderPhone": "01012345678",
+      "status": "completed",
+      "notes": "إيداع معتمد من الإدارة - فودافون كاش",
+      "createdAt": "2026-02-15 15:00:00"
+    },
+    {
+      "id": 502,
+      "userId": 2,
+      "userName": "أحمد السيد (duck_client)",
+      "reference": "YD-20260305-2-4F2B",
+      "methodId": 2,
+      "methodName": "InstaPay Egypt",
+      "amountEgp": 1540,
+      "amountUsd": 28,
+      "senderPhone": "01123456789",
+      "status": "completed",
+      "notes": "إيداع معتمد من الإدارة - إنستاباي",
+      "createdAt": "2026-03-05 18:22:00"
+    }
+  ],
+  "paymentMethods": [
+    {
+      "id": 1,
+      "name": "Vodafone Cash",
+      "min": 55,
+      "max": 550000,
+      "fee": 0,
+      "status": "active",
+      "accountNumber": "01205323440",
+      "instruction": "حول على رقم فودافون كاش 01205323440 ثم اكتب رقم الهاتف المحول منه والمبلغ في النموذج وارفق الإيصال.",
+      "image": "vodafone-cash.svg"
+    },
+    {
+      "id": 2,
+      "name": "InstaPay Egypt",
+      "min": 55,
+      "max": 550000,
+      "fee": 0,
+      "status": "active",
+      "accountNumber": "menna_206@instapay",
+      "instruction": "استخدم تطبيق إنستاباي وحوّل إلى حساب menna_206@instapay ثم اكتب بيانات التحويل وارفق لقطة شاشة للإيصال.",
+      "image": "instapay.svg"
+    }
+  ],
+  "tickets": [
+    {
+      "id": 101,
+      "userId": 2,
+      "userName": "أحمد السيد (duck_client)",
+      "subject": "استفسار عن سرعة تنفيذ متابعين إنستغرام",
+      "category": "order",
+      "orderId": 1001,
+      "status": "answered",
+      "priority": "normal",
+      "messages": [
+        {
+          "id": 1,
+          "sender": "user",
+          "senderName": "أحمد السيد",
+          "message": "السلام عليكم، كم يستغرق بدء الطلب رقم #1001 عادة؟",
+          "createdAt": "2026-03-01 12:15:00"
+        },
+        {
+          "id": 2,
+          "sender": "admin",
+          "senderName": "دعم البطة الصفرا",
+          "message": "وعليكم السلام، يبدأ الطلب بشكل فوري خلال 5 دقائق ويصل معدل التسليم إلى 1000 متابع بالساعة.",
+          "createdAt": "2026-03-01 12:20:00"
+        }
+      ],
+      "createdAt": "2026-03-01 12:15:00",
+      "updatedAt": "2026-03-01 12:20:00"
+    }
+  ],
+  "updatedAt": "2026-10-14T19:20:23.365Z"
+}
