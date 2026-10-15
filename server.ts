@@ -1472,8 +1472,13 @@ app.post('/api/orders', async (req, res) => {
 
   // Check balance
   if (user.balance < chargeUsd) {
+    const missingUsd = parseFloat((chargeUsd - user.balance).toFixed(2));
+    const missingEgp = parseFloat(((chargeUsd - user.balance) * exchangeRate).toFixed(2));
     return res.status(400).json({
-      error: `رصيدك غير كافٍ لإتمام هذا الطلب. التكلفة: $${chargeUsd.toFixed(2)} (${chargeEgp} ج.م) ورصيدك: $${user.balance.toFixed(2)} (${(user.balance * exchangeRate).toFixed(2)} ج.م). يرجى شحن الرصيد أولاً.`,
+      error: `عذراً، رصيدك الحالي ($${user.balance.toFixed(2)}) لا يكفي لإتمام هذا الطلب ($${chargeUsd.toFixed(2)}). ينقصك $${missingUsd.toFixed(2)} (${missingEgp} ج.م). اضغط على زر شحن الرصيد للمتابعة عبر فودافون كاش أو إنستاباي.`,
+      needsDeposit: true,
+      missingUsd,
+      missingEgp,
     });
   }
 
@@ -1672,10 +1677,12 @@ app.patch('/api/admin/orders/:id/status', (req, res) => {
 // Payment Methods & Manual Deposits
 app.get('/api/payment-methods', (req, res) => {
   res.json({
-    methods: paymentMethods.map((m) => ({
-      ...m,
-      exchangeRate,
-    })),
+    methods: paymentMethods
+      .filter((m) => m.status === 'active')
+      .map((m) => ({
+        ...m,
+        exchangeRate,
+      })),
     exchangeRate,
     vodafoneNumber: '01205323440',
     instapayAccount: 'menna_206@instapay',

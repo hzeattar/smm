@@ -26,7 +26,7 @@
       "email": "client@yellowduck.com",
       "password": "user123",
       "role": "user",
-      "balance": 45.26,
+      "balance": 53.3193,
       "avatar": "duck-happy.jpg",
       "status": "active",
       "createdAt": "2026-02-15 14:30:00"
@@ -1558,6 +1558,21 @@
   ],
   "orders": [
     {
+      "id": 1005,
+      "userId": 2,
+      "serviceId": 101,
+      "serviceName": "متابعين إنستغرام جودة فائقة [ضمان 30 يوم - سرعة عالية]",
+      "categoryName": "إنستغرام - Instagram",
+      "link": "https://instagram.com/myaccount",
+      "quantity": 1000,
+      "charge": 1.2,
+      "chargeEgp": 64.8,
+      "status": "pending",
+      "createdAt": "2026-10-15 14:00:05",
+      "notes": "في قائمة الانتظار للمزود (error.incorrect_service_id)",
+      "provider": "SMMFansFaster"
+    },
+    {
       "id": 1004,
       "userId": 2,
       "serviceId": 101,
@@ -1613,6 +1628,20 @@
     }
   ],
   "transactions": [
+    {
+      "id": 504,
+      "userId": 2,
+      "userName": "عميل المنصة (duck_client)",
+      "reference": "YD-20261015-2-6061",
+      "methodId": 1,
+      "methodName": "Vodafone Cash (فودافون كاش)",
+      "amountEgp": 500,
+      "amountUsd": 9.2593,
+      "senderPhone": "01099887766",
+      "status": "completed",
+      "notes": "تحويل فودافون كاش للتجربة",
+      "createdAt": "2026-10-15 14:00:10"
+    },
     {
       "id": 503,
       "userId": 3,
@@ -1752,5 +1781,5 @@
       "updatedAt": "2026-03-01 12:20:00"
     }
   ],
-  "updatedAt": "2026-10-15T13:23:14.274Z"
+  "updatedAt": "2026-10-15T14:00:14.154Z"
 }

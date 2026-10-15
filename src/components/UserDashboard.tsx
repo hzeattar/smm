@@ -60,6 +60,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderSuccess, setOrderSuccess] = useState<string | null>(null);
+  const [orderNeedsDeposit, setOrderNeedsDeposit] = useState(false);
 
   // Mass Order state
   const [massOrderData, setMassOrderData] = useState('');
@@ -188,6 +189,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     e.preventDefault();
     setOrderError(null);
     setOrderSuccess(null);
+    setOrderNeedsDeposit(false);
 
     if (!selectedServiceId) {
       setOrderError('يرجى اختيار الخدمة');
@@ -221,6 +223,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       const data = await res.json();
       if (!res.ok) {
         setOrderError(data.error || 'حدث خطأ أثناء إنشاء الطلب.');
+        if (data.needsDeposit) {
+          setOrderNeedsDeposit(true);
+        }
       } else {
         setOrderSuccess(`تم إنشاء الطلب بنجاح! رقم الطلب: #${data.order.id}`);
         setOrderLink('');
@@ -693,9 +698,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               )}
 
               {orderError && (
-                <div className="mb-6 p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 shrink-0" />
-                  <span>{orderError}</span>
+                <div className="mb-6 p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-rose-400" />
+                    <div className="flex-1">
+                      <div className="leading-relaxed">{orderError}</div>
+                      {orderNeedsDeposit && (
+                        <div className="mt-3 pt-3 border-t border-rose-500/25 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-300">
+                            يمكنك شحن المحفظة فوراً عبر فودافون كاش أو إنستاباي:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('add-funds')}
+                            className="px-3.5 py-1.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-[#f6b100]/20 cursor-pointer"
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            <span>شحن المحفظة الآن</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -836,21 +860,46 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Submit button */}
-                <button
-                  type="submit"
-                  disabled={orderSubmitting || (calculatedChargeEgp > 0 && user.balanceEgp < calculatedChargeEgp)}
-                  className="w-full py-3.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-sm transition-all shadow-lg shadow-[#f6b100]/20 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>
-                    {orderSubmitting
-                      ? 'جاري إرسال الطلب...'
-                      : user.balanceEgp < calculatedChargeEgp && calculatedChargeEgp > 0
-                      ? 'الرصيد غير كافٍ - اشحن رصيدك'
-                      : 'تأكيد وإرسال الطلب'}
-                  </span>
-                </button>
+                {/* Proactive Low Balance Alert */}
+                {calculatedChargeEgp > 0 && user.balanceEgp < calculatedChargeEgp && (
+                  <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5 text-amber-300">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                      <span>
+                        رصيدك الحالي ({user.balanceEgp.toLocaleString()} ج.م) أقل من تكلفة الطلب ({calculatedChargeEgp.toFixed(2)} ج.م). ينقصك {(calculatedChargeEgp - user.balanceEgp).toFixed(2)} ج.م.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('add-funds')}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-[#f6b100]/20 cursor-pointer whitespace-nowrap"
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>شحن المحفظة فوراً</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Submit button / Deposit Redirect */}
+                {calculatedChargeEgp > 0 && user.balanceEgp < calculatedChargeEgp ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('add-funds')}
+                    className="w-full py-3.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-sm transition-all shadow-lg shadow-[#f6b100]/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>الرصيد غير كافٍ — اضغط هنا لشحن الرصيد فوراً</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={orderSubmitting}
+                    className="w-full py-3.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-sm transition-all shadow-lg shadow-[#f6b100]/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{orderSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد وإرسال الطلب'}</span>
+                  </button>
+                )}
               </form>
             </div>
 
