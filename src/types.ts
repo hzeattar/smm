@@ -8,10 +8,11 @@ export interface User {
   balance: number;
   balanceEgp: number;
   avatar: string;
-  status: 'active' | 'deactive';
+  status: 'active' | 'deactive' | 'banned';
   ordersCount?: number;
   totalSpent?: number;
   totalSpentEgp?: number;
+  isGoogleAuth?: boolean;
 }
 
 export interface Category {
@@ -34,6 +35,9 @@ export interface Service {
   max: number;
   description: string;
   status: 'active' | 'deactive';
+  provider?: string;
+  providerServiceId?: number;
+  originalRate?: number;
 }
 
 export interface Order {
@@ -116,3 +120,19 @@ export interface Ticket {
   updatedAt: string;
 }
 
+export interface ProviderInfo {
+  provider: string;
+  apiUrl: string;
+  status: 'active' | 'inactive';
+  marginPercent: number;
+  apiKeyMasked: string;
+  syncEnabled: boolean;
+  syncInterval: number;
+  lastSyncTime: string;
+  lastSyncCount: number;
+  balance?: {
+    balance: string;
+    currency: string;
+  } | null;
+  servicesCount?: number;
+}

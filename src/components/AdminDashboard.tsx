@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Order, Transaction, Service, Category, PlatformStats, Ticket } from '../types';
+import { User, Order, Transaction, Service, Category, PlatformStats, Ticket, ProviderInfo } from '../types';
 import {
   ShieldAlert,
   Users,
@@ -20,6 +20,20 @@ import {
   Download,
   Image,
   Send,
+  Zap,
+  Activity,
+  CheckCircle2,
+  AlertTriangle,
+  Server,
+  Sliders,
+  KeyRound,
+  Ban,
+  Edit3,
+  Trash2,
+  Search,
+  CreditCard,
+  Power,
+  X,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -35,7 +49,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefresh,
   onNavigate,
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'deposits' | 'tickets' | 'users' | 'services' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'deposits' | 'tickets' | 'users' | 'services' | 'settings' | 'provider'>('orders');
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -43,6 +57,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [usersList, setUsersList] = useState<User[]>([]);
   const [servicesList, setServicesList] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [providerInfo, setProviderInfo] = useState<ProviderInfo | null>(null);
+  const [providerLoading, setProviderLoading] = useState(false);
+  const [providerTesting, setProviderTesting] = useState(false);
+  const [providerSyncingOrders, setProviderSyncingOrders] = useState(false);
+  const [providerSyncingServices, setProviderSyncingServices] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    balance?: string;
+    currency?: string;
+    latencyMs?: number;
+  } | null>(null);
+  const [resendingOrderId, setResendingOrderId] = useState<number | null>(null);
+  const [marginInput, setMarginInput] = useState<number>(15);
+  const [providerStatusInput, setProviderStatusInput] = useState<'active' | 'inactive'>('active');
   const [loading, setLoading] = useState(true);
 
   // Proof image preview modal
@@ -73,20 +103,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newServiceMax, setNewServiceMax] = useState<number>(10000);
   const [newServiceDesc, setNewServiceDesc] = useState('');
 
+  // Reset password modal state
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<number | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+
+  // Edit service modal state
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [editServiceName, setEditServiceName] = useState('');
+  const [editServiceRate, setEditServiceRate] = useState<number | ''>('');
+  const [editServiceMin, setEditServiceMin] = useState<number>(100);
+  const [editServiceMax, setEditServiceMax] = useState<number>(10000);
+  const [editServiceCatId, setEditServiceCatId] = useState<number>(1);
+  const [editServiceDesc, setEditServiceDesc] = useState('');
+  const [editServiceStatus, setEditServiceStatus] = useState<'active' | 'deactive'>('active');
+
+  // Service filters
+  const [serviceSearchQuery, setServiceSearchQuery] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | 'all'>('all');
+
+  // User filters
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'banned'>('all');
+
+  // Payment methods list state
+  const [paymentMethodsList, setPaymentMethodsList] = useState<any[]>([]);
+  const [editingMethod, setEditingMethod] = useState<any | null>(null);
+  const [methodSaving, setMethodSaving] = useState(false);
+
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [statsRes, ordRes, txRes, usrRes, srvRes, catRes, tickRes] = await Promise.all([
+      const [statsRes, ordRes, txRes, usrRes, srvRes, catRes, tickRes, pmRes] = await Promise.all([
         fetch('/api/stats'),
-        fetch('/api/orders?status=all', { headers: { 'x-user-role': 'admin' } }),
-        fetch('/api/transactions', { headers: { 'x-user-role': 'admin' } }),
-        fetch('/api/admin/users', { headers: { 'x-user-role': 'admin' } }),
+        fetch('/api/orders?status=all'),
+        fetch('/api/transactions'),
+        fetch('/api/admin/users'),
         fetch('/api/services'),
         fetch('/api/categories'),
-        fetch('/api/tickets', { headers: { 'x-user-role': 'admin' } }),
+        fetch('/api/tickets'),
+        fetch('/api/admin/payment-methods'),
       ]);
 
-      const [statsData, ordData, txData, usrData, srvData, catData, tickData] = await Promise.all([
+      const [statsData, ordData, txData, usrData, srvData, catData, tickData, pmData] = await Promise.all([
         statsRes.json(),
         ordRes.json(),
         txRes.json(),
@@ -94,6 +153,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         srvRes.json(),
         catRes.json(),
         tickRes.json(),
+        pmRes.ok ? pmRes.json() : [],
       ]);
 
       setStats(statsData);
@@ -103,6 +163,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setServicesList(srvData || []);
       setCategories(catData || []);
       setTickets(tickData.tickets || []);
+      if (Array.isArray(pmData)) setPaymentMethodsList(pmData);
     } catch (err) {
       console.error('Failed to load admin data', err);
     } finally {
@@ -315,6 +376,285 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Reset user password handler
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUserId || !newPasswordInput.trim()) return;
+    setResetPasswordLoading(true);
+    setActionSuccess(null);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${resetPasswordUserId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: newPasswordInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message);
+      setResetPasswordUserId(null);
+      setNewPasswordInput('');
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل تغيير كلمة المرور');
+    } finally {
+      setResetPasswordLoading(false);
+    }
+  };
+
+  // Toggle user status (active / banned)
+  const handleToggleUserStatus = async (userToUpdate: User) => {
+    setActionSuccess(null);
+    setActionError(null);
+    const nextStatus = userToUpdate.status === 'banned' ? 'active' : 'banned';
+    const confirmMsg = nextStatus === 'banned'
+      ? `هل أنت متأكد من حظر حساب المستخدم (${userToUpdate.username}) ومنعه من الدخول للمنصة؟`
+      : `هل أنت متأكد من إلغاء الحظر وتفعيل حساب المستخدم (${userToUpdate.username})؟`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/admin/users/${userToUpdate.id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message);
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل تعديل حالة المستخدم');
+    }
+  };
+
+  // Open edit service modal
+  const handleOpenEditService = (service: Service) => {
+    setEditingService(service);
+    setEditServiceName(service.name);
+    setEditServiceRate(service.rate);
+    setEditServiceMin(service.min);
+    setEditServiceMax(service.max);
+    setEditServiceCatId(service.categoryId);
+    setEditServiceDesc(service.description || '');
+    setEditServiceStatus(service.status || 'active');
+  };
+
+  // Save edited service
+  const handleSaveEditService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingService) return;
+    setActionSuccess(null);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/admin/services/${editingService.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editServiceName.trim(),
+          rate: Number(editServiceRate),
+          min: Number(editServiceMin),
+          max: Number(editServiceMax),
+          categoryId: Number(editServiceCatId),
+          description: editServiceDesc,
+          status: editServiceStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message);
+      setEditingService(null);
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل تحديث بيانات الخدمة');
+    }
+  };
+
+  // Delete service
+  const handleDeleteService = async (serviceId: number, serviceName: string) => {
+    setActionSuccess(null);
+    setActionError(null);
+    if (!window.confirm(`هل أنت متأكد من حذف الخدمة (${serviceName}) نهائياً من المنصة؟`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/services/${serviceId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message);
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل حذف الخدمة');
+    }
+  };
+
+  // Toggle service active / deactive status
+  const handleToggleServiceStatus = async (service: Service) => {
+    setActionSuccess(null);
+    setActionError(null);
+    const newStatus = service.status === 'active' ? 'deactive' : 'active';
+    try {
+      const res = await fetch(`/api/admin/services/${service.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(`تم ${newStatus === 'active' ? 'تفعيل' : 'تعطيل'} الخدمة (${service.name})`);
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل تعديل حالة الخدمة');
+    }
+  };
+
+  // Save payment method
+  const handleSavePaymentMethod = async (method: any) => {
+    setActionSuccess(null);
+    setActionError(null);
+    setMethodSaving(true);
+    try {
+      const res = await fetch(`/api/admin/payment-methods/${method.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(method),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message);
+      setEditingMethod(null);
+      fetchAdminData();
+    } catch (err: any) {
+      setActionError(err.message || 'فشل تحديث وسيلة الدفع');
+    } finally {
+      setMethodSaving(false);
+    }
+  };
+
+  // Provider operations
+  const fetchProviderInfo = async () => {
+    setProviderLoading(true);
+    try {
+      const res = await fetch('/api/admin/provider', {
+        headers: { 'x-user-role': 'admin' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProviderInfo(data);
+        setMarginInput(data.marginPercent || 15);
+        setProviderStatusInput(data.status || 'active');
+      }
+    } catch (err) {
+      console.error('Failed to load provider info', err);
+    } finally {
+      setProviderLoading(false);
+    }
+  };
+
+  const handleTestProvider = async () => {
+    setProviderTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/admin/provider/test', {
+        method: 'POST',
+        headers: { 'x-user-role': 'admin' },
+      });
+      const data = await res.json();
+      setTestResult(data);
+      if (res.ok) {
+        setActionSuccess(`تم فحص الاتصال بالمزود بنجاح! سرعة الاستجابة: ${data.latencyMs}ms | الرصيد: $${data.balance}`);
+        fetchProviderInfo();
+      } else {
+        setActionError(`فشل فحص الاتصال بالمزود: ${data.error}`);
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, error: err.message });
+      setActionError(`خطأ في فحص المزود: ${err.message}`);
+    } finally {
+      setProviderTesting(false);
+    }
+  };
+
+  const handleSaveProviderSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/admin/provider/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'admin',
+        },
+        body: JSON.stringify({
+          marginPercent: marginInput,
+          providerStatus: providerStatusInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess('تم حفظ إعدادات المزود وهامش الربح بنجاح');
+      fetchProviderInfo();
+    } catch (err: any) {
+      setActionError(err.message || 'تعذر حفظ إعدادات المزود');
+    }
+  };
+
+  const handleSyncProviderOrders = async () => {
+    setProviderSyncingOrders(true);
+    try {
+      const res = await fetch('/api/admin/provider/sync', {
+        method: 'POST',
+        headers: { 'x-user-role': 'admin' },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message || 'تمت مزامنة حالات الطلبات مع المزود بنجاح');
+      fetchAdminData();
+      fetchProviderInfo();
+    } catch (err: any) {
+      setActionError(err.message || 'تعذر مزامنة الطلبات');
+    } finally {
+      setProviderSyncingOrders(false);
+    }
+  };
+
+  const handleSyncProviderServices = async () => {
+    setProviderSyncingServices(true);
+    try {
+      const res = await fetch('/api/admin/provider/sync-services', {
+        method: 'POST',
+        headers: { 'x-user-role': 'admin' },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message || 'تمت مزامنة وتحديث خدمات SMMFansFaster بنجاح');
+      fetchAdminData();
+      fetchProviderInfo();
+    } catch (err: any) {
+      setActionError(err.message || 'تعذر استيراد خدمات المزود');
+    } finally {
+      setProviderSyncingServices(false);
+    }
+  };
+
+  const handleResendOrder = async (orderId: number) => {
+    setResendingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/resend`, {
+        method: 'POST',
+        headers: { 'x-user-role': 'admin' },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setActionSuccess(data.message || `تم إرسال الطلب #${orderId} لمزود SMMFansFaster بنجاح`);
+      fetchAdminData();
+      fetchProviderInfo();
+    } catch (err: any) {
+      setActionError(err.message || `تعذر إرسال الطلب #${orderId} للمزود`);
+    } finally {
+      setResendingOrderId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0f1117] py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-8">
@@ -476,6 +816,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
+            onClick={() => {
+              setActiveTab('provider');
+              fetchProviderInfo();
+            }}
+            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+              activeTab === 'provider' ? 'bg-[#f6b100] text-black shadow-md shadow-[#f6b100]/20' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-500" />
+            <span>مزود SMMFansFaster (الربط المباشر)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('settings')}
             className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
               activeTab === 'settings' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
@@ -489,10 +842,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 1: ORDERS MANAGEMENT */}
         {activeTab === 'orders' && (
           <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-            <h2 className="text-lg font-black text-white mb-1">إدارة كل الطلبات</h2>
-            <p className="text-xs text-slate-400 mb-6">
-              تغيير حالة الطلب (قيد الانتظار، قيد التنفيذ، مكتمل، ملغي مع استرجاع الرصيد تلقائياً)
-            </p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-black text-white mb-1">إدارة كل الطلبات</h2>
+                <p className="text-xs text-slate-400">
+                  مراقبة حالات الطلبات، وإعادة توجيه الطلبات للمزود الخارجي SMMFansFaster، أو تغيير الحالة
+                </p>
+              </div>
+              <button
+                onClick={handleSyncProviderOrders}
+                disabled={providerSyncingOrders}
+                className="px-4 py-2 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${providerSyncingOrders ? 'animate-spin' : ''}`} />
+                <span>{providerSyncingOrders ? 'جاري المزامنة...' : 'مزامنة حالات المزود'}</span>
+              </button>
+            </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-right text-xs">
@@ -503,8 +868,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <th className="p-3.5 font-bold">الرابط</th>
                     <th className="p-3.5 font-bold">الكمية</th>
                     <th className="p-3.5 font-bold">التكلفة</th>
+                    <th className="p-3.5 font-bold">المزود الخارجي</th>
                     <th className="p-3.5 font-bold">الحالة الحالية</th>
-                    <th className="p-3.5 font-bold">تغيير الحالة</th>
+                    <th className="p-3.5 font-bold">الإجراءات</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#272c3d]/50">
@@ -532,6 +898,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span className="block text-[10px] text-slate-500">${o.charge.toFixed(2)}</span>
                       </td>
                       <td className="p-3.5">
+                        {o.providerOrderId ? (
+                          <div className="font-mono text-[11px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 inline-flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-amber-400" />
+                            <span>#{o.providerOrderId}</span>
+                          </div>
+                        ) : o.provider ? (
+                          <span className="text-[11px] text-amber-400/80 font-mono">{o.provider}</span>
+                        ) : (
+                          <span className="text-[11px] text-slate-500">يدوي / محلي</span>
+                        )}
+                        {o.notes && <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{o.notes}</div>}
+                      </td>
+                      <td className="p-3.5">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                             o.status === 'completed'
@@ -553,7 +932,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </span>
                       </td>
                       <td className="p-3.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {o.status === 'pending' && (
+                            <button
+                              onClick={() => handleResendOrder(o.id)}
+                              disabled={resendingOrderId === o.id}
+                              className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-[10px] transition-colors flex items-center gap-1"
+                              title="إرسال الطلب لمزود SMMFansFaster"
+                            >
+                              <Zap className="w-3 h-3" />
+                              <span>{resendingOrderId === o.id ? 'إرسال...' : 'إرسال للمزود'}</span>
+                            </button>
+                          )}
                           {o.status !== 'completed' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(o.id, 'completed')}
@@ -578,7 +968,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-[10px] transition-colors"
                               title="إلغاء واسترجاع الرصيد"
                             >
-                              إلغاء + استرداد
+                              إلغاء
                             </button>
                           )}
                         </div>
@@ -823,56 +1213,193 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 3: USERS MANAGEMENT */}
         {activeTab === 'users' && (
           <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-            <h2 className="text-lg font-black text-white mb-1">إدارة المستخدمين</h2>
-            <p className="text-xs text-slate-400 mb-6">عرض أرصدة العملاء وإمكانية شحن أو خصم الرصيد يدوياً</p>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-black text-white mb-1 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-[#f6b100]" />
+                  <span>إدارة حسابات المستخدمين والعملاء</span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  التحكم الكامل بالحسابات: تغيير كلمة السر عند النسيان، الحظر والتفعيل، وتعديل الأرصدة
+                </p>
+              </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
-                  <tr>
-                    <th className="p-3.5 font-bold">الاسم</th>
-                    <th className="p-3.5 font-bold">اسم المستخدم</th>
-                    <th className="p-3.5 font-bold">البريد الإلكتروني</th>
-                    <th className="p-3.5 font-bold">الرصيد ($)</th>
-                    <th className="p-3.5 font-bold">الرصيد (ج.م)</th>
-                    <th className="p-3.5 font-bold">إجمالي الطلبات</th>
-                    <th className="p-3.5 font-bold">التحكم في الرصيد</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#272c3d]/50">
-                  {usersList.map((u) => (
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative min-w-[220px]">
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="بحث بالاسم أو اسم المستخدم أو البريد..."
+                    className="w-full pl-3 pr-8 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-2.5" />
+                </div>
+
+                <div className="flex items-center gap-1 bg-[#0f1117] p-1 rounded-xl border border-[#272c3d] text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setUserStatusFilter('all')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                      userStatusFilter === 'all'
+                        ? 'bg-[#f6b100] text-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    الكل ({usersList.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserStatusFilter('active')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                      userStatusFilter === 'active'
+                        ? 'bg-emerald-500 text-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    النشط ({usersList.filter((u) => u.status === 'active').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUserStatusFilter('banned')}
+                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                      userStatusFilter === 'banned'
+                        ? 'bg-rose-500 text-white'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    المحظور ({usersList.filter((u) => u.status === 'banned').length})
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const filteredUsers = usersList.filter((u) => {
+                if (userStatusFilter !== 'all' && u.status !== userStatusFilter) return false;
+                if (!userSearchQuery.trim()) return true;
+                const q = userSearchQuery.toLowerCase();
+                return (
+                  u.username.toLowerCase().includes(q) ||
+                  u.email.toLowerCase().includes(q) ||
+                  `${u.firstname} ${u.lastname}`.toLowerCase().includes(q)
+                );
+              });
+
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                      <tr>
+                        <th className="p-3.5 font-bold">الاسم</th>
+                        <th className="p-3.5 font-bold">اسم المستخدم</th>
+                        <th className="p-3.5 font-bold">البريد الإلكتروني</th>
+                        <th className="p-3.5 font-bold">الحالة</th>
+                        <th className="p-3.5 font-bold">الرصيد ($)</th>
+                        <th className="p-3.5 font-bold">الرصيد (ج.م)</th>
+                        <th className="p-3.5 font-bold">الطلبات</th>
+                        <th className="p-3.5 font-bold text-center">إجراءات التحكم</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#272c3d]/50">
+                      {filteredUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-slate-500">
+                            لا يوجد مستخدمين يطابقون خيارات البحث المحددة
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredUsers.map((u) => (
                     <tr key={u.id} className="hover:bg-[#222634]/40 transition-colors">
                       <td className="p-3.5 font-bold text-white flex items-center gap-2">
                         <img
-                          src={`/images/avatars/${u.avatar || 'duck-happy.jpg'}`}
+                          src={u.avatar?.startsWith('http') || u.avatar?.startsWith('/brand') ? u.avatar : `/images/avatars/${u.avatar || 'duck-happy.jpg'}`}
                           alt=""
                           className="w-7 h-7 rounded-lg object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/brand/yellow-duck.svg';
+                          }}
                         />
                         <span>
                           {u.firstname} {u.lastname}
                         </span>
+                        {u.role === 'admin' && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold">
+                            مشرف
+                          </span>
+                        )}
                       </td>
-                      <td className="p-3.5 text-slate-300">@{u.username}</td>
-                      <td className="p-3.5 text-slate-400">{u.email}</td>
-                      <td className="p-3.5 font-black text-emerald-400">${u.balance.toFixed(2)}</td>
-                      <td className="p-3.5 font-bold text-[#f6b100]">{u.balanceEgp.toLocaleString()} ج.م</td>
-                      <td className="p-3.5 text-white font-bold">{u.ordersCount || 0}</td>
+                      <td className="p-3.5 text-slate-300 font-mono">@{u.username}</td>
+                      <td className="p-3.5 text-slate-400 font-mono">{u.email}</td>
                       <td className="p-3.5">
-                        <button
-                          onClick={() => {
-                            setAdjustUserId(u.id);
-                            setAdjustAmount(10);
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-[#f6b100] hover:bg-[#e09f00] text-black font-bold text-xs transition-colors"
+                        <span
+                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                            u.status === 'active'
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : u.status === 'banned'
+                              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                              : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                          }`}
                         >
-                          تعديل الرصيد
-                        </button>
+                          {u.status === 'active' ? 'نشط' : u.status === 'banned' ? 'محظور' : 'معطل'}
+                        </span>
+                      </td>
+                      <td className="p-3.5 font-black text-emerald-400 font-mono">${u.balance.toFixed(2)}</td>
+                      <td className="p-3.5 font-bold text-[#f6b100] font-mono">{u.balanceEgp.toLocaleString()} ج.م</td>
+                      <td className="p-3.5 text-white font-bold font-mono">{u.ordersCount || 0}</td>
+                      <td className="p-3.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Adjust Balance */}
+                          <button
+                            onClick={() => {
+                              setAdjustUserId(u.id);
+                              setAdjustAmount(10);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                            title="شحن أو خصم رصيد"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>الرصيد</span>
+                          </button>
+
+                          {/* Reset Password */}
+                          <button
+                            onClick={() => {
+                              setResetPasswordUserId(u.id);
+                              setNewPasswordInput('');
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                            title="تغيير كلمة مرور العميل في حال نسيانها"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            <span>كلمة السر</span>
+                          </button>
+
+                          {/* Ban / Activate (except self) */}
+                          {u.id !== admin.id && (
+                            <button
+                              onClick={() => handleToggleUserStatus(u)}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                u.status === 'banned'
+                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400'
+                              }`}
+                              title={u.status === 'banned' ? 'إلغاء حظر الحساب' : 'حظر هذا المستخدم'}
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
             {/* Adjust balance modal */}
             {adjustUserId && (
@@ -963,47 +1490,250 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Reset Password Modal */}
+            {resetPasswordUserId && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-[#f6b100]" />
+                      <span>تغيير كلمة مرور المستخدم</span>
+                    </h3>
+                    <button
+                      onClick={() => setResetPasswordUserId(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222634] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const targetU = usersList.find((u) => u.id === resetPasswordUserId);
+                    return (
+                      <p className="text-xs text-slate-400 mb-4">
+                        تعديل كلمة السر المعتمدة لحساب <strong className="text-white">@{targetU?.username}</strong> ({targetU?.firstname} {targetU?.lastname})
+                      </p>
+                    );
+                  })()}
+
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                        كلمة المرور الجديدة (New Password)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        minLength={4}
+                        value={newPasswordInput}
+                        onChange={(e) => setNewPasswordInput(e.target.value)}
+                        placeholder="أدخل كلمة المرور الجديدة للعميل..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs font-semibold focus:outline-none focus:border-[#f6b100]"
+                      />
+                      <small className="text-slate-500 text-[11px] block mt-1">
+                        سيتمكن العميل فور حفظها من الدخول بكلمة المرور هذه مباشرة.
+                      </small>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={resetPasswordLoading || newPasswordInput.trim().length < 4}
+                        className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-bold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {resetPasswordLoading ? 'جاري الحفظ...' : 'تأكيد وحفظ كلمة المرور'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setResetPasswordUserId(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* TAB 4: SERVICES MANAGEMENT */}
         {activeTab === 'services' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-8 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-              <h2 className="text-lg font-black text-white mb-1">الخدمات المنشورة</h2>
-              <p className="text-xs text-slate-400 mb-6">قائمة بكل الخدمات المتاحة للعملاء وأسعارها</p>
+          <div className="space-y-6">
+            {/* Top Toolbar */}
+            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-white mb-1 flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-[#f6b100]" />
+                  <span>التحكم بالخدمات والأسعار (Services Control)</span>
+                </h2>
+                <p className="text-xs text-slate-400">
+                  إدارة شاملة لجميع الخدمات: تعديل الأسعار، تغيير الحدود، التفعيل والتعطيل، الحذف، والمزامنة الحية
+                </p>
+              </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
-                    <tr>
-                      <th className="p-3 font-bold">الرقم</th>
-                      <th className="p-3 font-bold">القسم</th>
-                      <th className="p-3 font-bold">اسم الخدمة</th>
-                      <th className="p-3 font-bold">السعر / 1000 ($)</th>
-                      <th className="p-3 font-bold">السعر / 1000 (ج.م)</th>
-                      <th className="p-3 font-bold">الحدود</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#272c3d]/50">
-                    {servicesList.map((s) => (
-                      <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
-                        <td className="p-3 font-mono text-slate-400">#{s.id}</td>
-                        <td className="p-3 font-bold text-white">{s.categoryName}</td>
-                        <td className="p-3 text-slate-200 max-w-xs">{s.name}</td>
-                        <td className="p-3 font-black text-emerald-400">${s.rate.toFixed(2)}</td>
-                        <td className="p-3 font-black text-[#f6b100]">
-                          {(s.rate * exchangeRate).toFixed(2)} ج.م
-                        </td>
-                        <td className="p-3 text-slate-400">
-                          {s.min.toLocaleString()} - {s.max.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSyncProviderServices}
+                  disabled={providerSyncingServices}
+                  className="px-4 py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors flex items-center gap-2 shadow-lg shadow-[#f6b100]/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${providerSyncingServices ? 'animate-spin' : ''}`} />
+                  <span>{providerSyncingServices ? 'جاري استيراد كافة الخدمات...' : 'استيراد وتحديث كافة الخدمات من SMMFansFaster'}</span>
+                </button>
               </div>
             </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-8 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                {/* Search and Category Filter */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={serviceSearchQuery}
+                      onChange={(e) => setServiceSearchQuery(e.target.value)}
+                      placeholder="بحث باسم الخدمة أو رقمها (ID)..."
+                      className="w-full pl-3 pr-8 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-2.5" />
+                  </div>
+
+                  <div className="w-full sm:w-48">
+                    <select
+                      value={selectedCategoryFilter}
+                      onChange={(e) => setSelectedCategoryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    >
+                      <option value="all">جميع المنصات والأقسام</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {(() => {
+                  const filteredServices = servicesList.filter((s) => {
+                    if (selectedCategoryFilter !== 'all' && s.categoryId !== selectedCategoryFilter) return false;
+                    if (!serviceSearchQuery.trim()) return true;
+                    const q = serviceSearchQuery.toLowerCase();
+                    return (
+                      s.name.toLowerCase().includes(q) ||
+                      s.id.toString().includes(q) ||
+                      (s.categoryName && s.categoryName.toLowerCase().includes(q))
+                    );
+                  });
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <div className="text-[11px] text-slate-400 mb-2 font-semibold">
+                        الخدمات المعروضة: {filteredServices.length} من إجمالي {servicesList.length} خدمة
+                      </div>
+                      <table className="w-full text-right text-xs">
+                        <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                          <tr>
+                            <th className="p-3 font-bold">الرقم</th>
+                            <th className="p-3 font-bold">القسم</th>
+                            <th className="p-3 font-bold">اسم الخدمة</th>
+                            <th className="p-3 font-bold">السعر ($)</th>
+                            <th className="p-3 font-bold">السعر (ج.م)</th>
+                            <th className="p-3 font-bold">الحدود</th>
+                            <th className="p-3 font-bold">الحالة</th>
+                            <th className="p-3 font-bold text-center">إجراءات</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#272c3d]/50">
+                          {filteredServices.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="p-6 text-center text-slate-500">
+                                لا توجد خدمات مطابقة للبحث أو القسم المختار
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredServices.map((s) => (
+                              <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
+                                <td className="p-3 font-mono text-slate-400">#{s.id}</td>
+                                <td className="p-3 font-bold text-white whitespace-nowrap">
+                                  {s.categoryName || categories.find((c) => c.id === s.categoryId)?.name || 'عام'}
+                                </td>
+                                <td className="p-3 text-slate-200 max-w-xs">
+                                  <div className="font-semibold line-clamp-2">{s.name}</div>
+                                  {s.provider === 'SMMFansFaster' && (
+                                    <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 bg-amber-500/15 text-amber-300 rounded font-mono">
+                                      SMMFansFaster #{s.providerServiceId || s.id}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-3 font-black text-emerald-400 font-mono">${s.rate.toFixed(3)}</td>
+                                <td className="p-3 font-black text-[#f6b100] font-mono whitespace-nowrap">
+                                  {(s.rate * exchangeRate).toFixed(2)} ج.م
+                                </td>
+                                <td className="p-3 text-slate-400 font-mono whitespace-nowrap">
+                                  {s.min.toLocaleString()} - {s.max.toLocaleString()}
+                                </td>
+                                <td className="p-3">
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      s.status === 'active'
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                                    }`}
+                                  >
+                                    {s.status === 'active' ? 'نشط' : 'معطل'}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <div className="flex items-center justify-center gap-1">
+                                    {/* Edit Service */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditService(s)}
+                                      className="p-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                                      title="تعديل بيانات وسعر الخدمة"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Toggle Active / Deactive */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleServiceStatus(s)}
+                                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        s.status === 'active'
+                                          ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400'
+                                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400'
+                                      }`}
+                                      title={s.status === 'active' ? 'تعطيل الخدمة مؤقتاً' : 'تفعيل الخدمة'}
+                                    >
+                                      <Power className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {/* Delete Service */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteService(s.id, s.name)}
+                                      className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 transition-colors cursor-pointer"
+                                      title="حذف الخدمة نهائياً"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
 
             {/* Add Service Card */}
             <div className="lg:col-span-4 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
@@ -1105,72 +1835,750 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </form>
             </div>
           </div>
+
+          {/* Edit Service Modal */}
+          {editingService && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-[#f6b100]" />
+                    <span>تعديل بيانات الخدمة #{editingService.id}</span>
+                  </h3>
+                  <button
+                    onClick={() => setEditingService(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222634] cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEditService} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">اسم الخدمة</label>
+                    <input
+                      type="text"
+                      required
+                      value={editServiceName}
+                      onChange={(e) => setEditServiceName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">القسم / المنصة</label>
+                      <select
+                        value={editServiceCatId}
+                        onChange={(e) => setEditServiceCatId(Number(e.target.value))}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      >
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">الحالة</label>
+                      <select
+                        value={editServiceStatus}
+                        onChange={(e) => setEditServiceStatus(e.target.value as any)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      >
+                        <option value="active">نشط (متاحة للطلب)</option>
+                        <option value="deactive">معطل (مخفية مؤقتاً)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">السعر ($)</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        required
+                        value={editServiceRate}
+                        onChange={(e) => setEditServiceRate(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                      {typeof editServiceRate === 'number' && editServiceRate > 0 && (
+                        <span className="text-[10px] text-[#f6b100] block mt-1">
+                          = {(editServiceRate * exchangeRate).toFixed(2)} ج.م
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى</label>
+                      <input
+                        type="number"
+                        required
+                        value={editServiceMin}
+                        onChange={(e) => setEditServiceMin(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى</label>
+                      <input
+                        type="number"
+                        required
+                        value={editServiceMax}
+                        onChange={(e) => setEditServiceMax(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">الوصف</label>
+                    <textarea
+                      rows={3}
+                      value={editServiceDesc}
+                      onChange={(e) => setEditServiceDesc(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors cursor-pointer"
+                    >
+                      حفظ التعديلات
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingService(null)}
+                      className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+        {/* TAB 5: SETTINGS & EXCHANGE RATE & PAYMENT METHODS */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Exchange Rate & Backup */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* Rate Card */}
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                  <h2 className="text-lg font-black text-white mb-2 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-[#f6b100]" />
+                    <span>إعدادات سعر الصرف (USD / EGP)</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mb-5">
+                    تغيير سعر تحويل الدولار إلى جنيه مصري المعتمد في المنصة تلقائياً لجميع الخدمات والإيداعات
+                  </p>
+
+                  <form onSubmit={handleSaveRate} className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d]">
+                      <label className="block text-xs font-bold text-slate-300 mb-2">
+                        سعر صرف الدولار الحالي: (1 USD = ? EGP)
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          required
+                          value={newRate}
+                          onChange={(e) => setNewRate(parseFloat(e.target.value))}
+                          className="flex-1 px-4 py-2.5 rounded-xl bg-[#181b26] border border-[#272c3d] text-white text-base font-black focus:outline-none focus:border-[#f6b100]"
+                        />
+                        <span className="text-sm font-bold text-white whitespace-nowrap">جنيه مصري</span>
+                      </div>
+                      <small className="text-slate-500 block mt-2 text-[11px]">
+                        السعر الافتراضي المعتمد في المنصة هو 55.0 جنيه.
+                      </small>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-lg shadow-[#f6b100]/20 cursor-pointer"
+                    >
+                      تحديث سعر الصرف وحفظ
+                    </button>
+                  </form>
+                </div>
+
+                {/* Backup & Export */}
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                  <h3 className="text-sm font-black text-white mb-2 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-[#f6b100]" />
+                    <span>النسخ الاحتياطي وتصدير البيانات</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mb-4">
+                    تنزيل لقطة كاملة لجميع بيانات المنصة (المستخدمين، الطلبات، الإيداعات، والخدمات) بصيغة JSON.
+                  </p>
+                  <a
+                    href="/api/admin/export"
+                    download
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>تحميل النسخة الاحتياطية (Export JSON)</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Right Column: Egyptian Payment Methods Management */}
+              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#272c3d]">
+                  <div>
+                    <h2 className="text-base font-black text-white flex items-center gap-2">
+                      <CreditCard className="w-5 h-5 text-[#f6b100]" />
+                      <span>إدارة محافظ الدفع المصرية (Egyptian Cash & InstaPay)</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      التحكم بأرقام فودافون كاش، إنستاباي، أورانج، اتصالات، وي باي، وفوري وتفعيلها للعملاء
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3.5">
+                  {paymentMethodsList.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500 text-xs">
+                      جاري تحميل بيانات وسائل الدفع...
+                    </div>
+                  ) : (
+                    paymentMethodsList.map((pm) => (
+                      <div
+                        key={pm.id}
+                        className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] hover:border-[#383f56] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-[#181b26] border border-[#272c3d] flex items-center justify-center p-2 shrink-0">
+                            <CreditCard className="w-5 h-5 text-[#f6b100]" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white text-xs">{pm.name}</span>
+                              <span
+                                className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
+                                  pm.status === 'active'
+                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                                }`}
+                              >
+                                {pm.status === 'active' ? 'نشط' : 'معطل'}
+                              </span>
+                            </div>
+                            <div className="text-xs font-mono text-[#f6b100] mt-1 font-bold">
+                              {pm.accountNumber || 'غير محدد'}
+                            </div>
+                            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                              {pm.instruction}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => setEditingMethod({ ...pm })}
+                            className="px-3 py-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-sky-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>تعديل</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Edit Payment Method Modal */}
+            {editingMethod && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-md bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-[#f6b100]" />
+                      <span>تعديل وسيلة الدفع ({editingMethod.name})</span>
+                    </h3>
+                    <button
+                      onClick={() => setEditingMethod(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222634] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSavePaymentMethod(editingMethod);
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        رقم الهاتف / عنوان المحفظة أو الحساب
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingMethod.accountNumber || ''}
+                        onChange={(e) =>
+                          setEditingMethod({ ...editingMethod, accountNumber: e.target.value })
+                        }
+                        placeholder="مثال: 01205323440 أو account@instapay"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs font-mono font-bold focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">الحالة</label>
+                      <select
+                        value={editingMethod.status || 'active'}
+                        onChange={(e) =>
+                          setEditingMethod({ ...editingMethod, status: e.target.value as any })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      >
+                        <option value="active">مفعلة (تظهر في صفحة شحن الرصيد)</option>
+                        <option value="deactive">معطلة (مخفية مؤقتاً)</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى (ج.م)</label>
+                        <input
+                          type="number"
+                          value={editingMethod.min || 50}
+                          onChange={(e) =>
+                            setEditingMethod({ ...editingMethod, min: Number(e.target.value) })
+                          }
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى (ج.م)</label>
+                        <input
+                          type="number"
+                          value={editingMethod.max || 500000}
+                          onChange={(e) =>
+                            setEditingMethod({ ...editingMethod, max: Number(e.target.value) })
+                          }
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">رسوم (%)</label>
+                        <input
+                          type="number"
+                          value={editingMethod.fee ?? 0}
+                          onChange={(e) =>
+                            setEditingMethod({ ...editingMethod, fee: Number(e.target.value) })
+                          }
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        تعليمات التحويل للعميل
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editingMethod.instruction || ''}
+                        onChange={(e) =>
+                          setEditingMethod({ ...editingMethod, instruction: e.target.value })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={methodSaving}
+                        className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {methodSaving ? 'جاري الحفظ...' : 'حفظ بيانات المحفظة'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMethod(null)}
+                        className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
-        {/* TAB 5: SETTINGS & EXCHANGE RATE */}
-        {activeTab === 'settings' && (
-          <div className="max-w-xl mx-auto bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 sm:p-8 shadow-xl">
-            <h2 className="text-lg font-black text-white mb-2 flex items-center gap-2">
-              <Settings className="w-5 h-5 text-[#f6b100]" />
-              <span>إعدادات سعر الصرف والمدفوعات</span>
-            </h2>
-            <p className="text-xs text-slate-400 mb-6">
-              تغيير سعر تحويل الدولار إلى جنيه مصري المعتمد في المنصة تلقائياً لجميع الخدمات والإيداعات
-            </p>
-
-            <form onSubmit={handleSaveRate} className="space-y-5">
-              <div className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d]">
-                <label className="block text-xs font-bold text-slate-300 mb-2">
-                  سعر صرف الدولار الحالي: (1 USD = ? EGP)
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="1"
-                    required
-                    value={newRate}
-                    onChange={(e) => setNewRate(parseFloat(e.target.value))}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-[#181b26] border border-[#272c3d] text-white text-base font-black focus:outline-none focus:border-[#f6b100]"
-                  />
-                  <span className="text-sm font-bold text-white">جنيه مصري</span>
+        {/* TAB 7: SMMFANSFASTER PROVIDER INTEGRATION */}
+        {activeTab === 'provider' && (
+          <div className="space-y-6">
+            {/* Provider Header Banner */}
+            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
+                  <Zap className="w-4 h-4" />
+                  <span>الربط المباشر مع مزود SMMFansFaster</span>
                 </div>
-                <small className="text-slate-500 block mt-2 text-[11px]">
-                  السعر الافتراضي المحدد في إعدادات Yellow Duck هو 55.0 جنيه.
-                </small>
+                <h2 className="text-xl font-black text-white">إدارة مزود الخدمات الخارجي (API v2)</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  مزامنة تلقائية للخدمات وحالات الطلبات مع احتساب هامش الربح وفحص الرصيد اللحظي
+                </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-2 text-xs">
-                <div className="font-bold text-white">بيانات الدفع المفعلة:</div>
-                <div className="text-slate-300">• فودافون كاش: 01205323440</div>
-                <div className="text-slate-300">• إنستاباي: menna_206@instapay</div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTestProvider}
+                  disabled={providerTesting}
+                  className="px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <Activity className={`w-4 h-4 ${providerTesting ? 'animate-spin' : ''}`} />
+                  <span>{providerTesting ? 'جاري الفحص...' : 'فحص الاتصال الحي (Ping)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchProviderInfo}
+                  className="p-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors"
+                  title="تحديث البيانات"
+                >
+                  <RefreshCw className={`w-4 h-4 ${providerLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Provider KPI Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="text-xs">حالة الاتصال المباشر</span>
+                  <Server className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-base font-black text-white">متصل ومباشر (Live)</span>
+                </div>
+                <span className="text-[11px] text-slate-400 block mt-1">
+                  {providerInfo?.apiKeyMasked ? `مفتاح API: ${providerInfo.apiKeyMasked}` : 'جاهز للعمل'}
+                </span>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-lg shadow-[#f6b100]/20"
-              >
-                تحديث سعر الصرف وحفظ الإعدادات
-              </button>
-            </form>
+              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="text-xs">رصيدك لدى المزود (USD)</span>
+                  <DollarSign className="w-4 h-4 text-[#f6b100]" />
+                </div>
+                <div className="text-xl font-black text-[#f6b100]">
+                  ${providerInfo?.balance?.balance || '0.0268'}
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  يعادل:{' '}
+                  {(
+                    parseFloat(providerInfo?.balance?.balance || '0.0268') * exchangeRate
+                  ).toFixed(2)}{' '}
+                  ج.م
+                </span>
+              </div>
 
-            {/* Backup & Export */}
-            <div className="mt-8 pt-6 border-t border-[#272c3d]">
-              <h3 className="text-sm font-black text-white mb-2 flex items-center gap-2">
-                <Download className="w-4 h-4 text-[#f6b100]" />
-                <span>النسخ الاحتياطي وتصدير البيانات</span>
-              </h3>
-              <p className="text-xs text-slate-400 mb-4">
-                تنزيل لقطة كاملة لجميع بيانات المنصة (المستخدمين، الطلبات، الإيداعات، والخدمات) بصيغة JSON.
-              </p>
-              <a
-                href="/api/admin/export"
-                download
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors"
+              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="text-xs">هامش الربح المعتمد</span>
+                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="text-xl font-black text-white">
+                  +{providerInfo?.marginPercent || marginInput}%
+                </div>
+                <span className="text-[11px] text-emerald-400">يضاف تلقائياً فوق سعر المزود</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+                <div className="flex items-center justify-between text-slate-400 mb-2">
+                  <span className="text-xs">الخدمات المرتبطة بالمزود</span>
+                  <Layers className="w-4 h-4 text-purple-400" />
+                </div>
+                <div className="text-xl font-black text-white">
+                  {providerInfo?.servicesCount || servicesList.filter((s) => s.provider === 'SMMFansFaster').length} خدمة
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  من إجمالي {servicesList.length} خدمة في المنصة
+                </span>
+              </div>
+            </div>
+
+            {/* Test result display */}
+            {testResult && (
+              <div
+                className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between ${
+                  testResult.success
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                    : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                }`}
               >
-                <Download className="w-4 h-4" />
-                <span>تحميل النسخة الاحتياطية (Export JSON)</span>
-              </a>
+                <div className="flex items-center gap-3">
+                  {testResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                  )}
+                  <div>
+                    <div className="font-bold">{testResult.message || testResult.error}</div>
+                    {testResult.success && (
+                      <div className="text-[11px] opacity-80 mt-0.5">
+                        سرعة الاتصال: {testResult.latencyMs}ms | الرصيد الحالي:{' '}
+                        {testResult.balance} {testResult.currency}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTestResult(null)}
+                  className="text-xs hover:underline"
+                >
+                  إغلاق
+                </button>
+              </div>
+            )}
+
+            {/* Two Column Layout: Actions & Settings + Order Dispatcher */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Settings and Sync Engine */}
+              <div className="lg:col-span-5 space-y-6">
+                {/* Margin and Status Settings */}
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                  <h3 className="text-base font-black text-white mb-2 flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-[#f6b100]" />
+                    <span>إعدادات هامش الربح وحالة المزود</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mb-5">
+                    تحكم في النسبة المئوية للربح التي تضاف تلقائياً فوق أسعار المزود الأساسية
+                  </p>
+
+                  <form onSubmit={handleSaveProviderSettings} className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-300">
+                          نسبة هامش الربح الإضافي (%)
+                        </label>
+                        <span className="text-xs font-mono font-black text-[#f6b100]">
+                          +{marginInput}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={marginInput}
+                        onChange={(e) => setMarginInput(Number(e.target.value))}
+                        className="w-full accent-[#f6b100] cursor-pointer"
+                      />
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
+                        <span>0% (سعر التكلفة)</span>
+                        <span>25%</span>
+                        <span>50%</span>
+                        <span>100% (مضاعف)</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                        حالة التوجيه التلقائي للطلبات
+                      </label>
+                      <select
+                        value={providerStatusInput}
+                        onChange={(e) => setProviderStatusInput(e.target.value as any)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      >
+                        <option value="active">مفعل (إرسال الطلبات الجديدة فوراً للمزود)</option>
+                        <option value="inactive">معطل (الاحتفاظ بالطلبات محلياً قيد الانتظار)</option>
+                      </select>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-[#0f1117] border border-[#272c3d] text-[11px] text-slate-300 space-y-1">
+                      <div className="font-bold text-white">معادلة حساب السعر للعميل:</div>
+                      <div className="font-mono text-amber-300">
+                        السعر النهائي = سعر المزود × (1 + {marginInput} / 100)
+                      </div>
+                      <div className="text-slate-400">
+                        إذا كانت خدمة المزود بـ $1.00، ستظهر للعميل بـ ${(1 * (1 + marginInput / 100)).toFixed(2)} USD (
+                        {((1 * (1 + marginInput / 100)) * exchangeRate).toFixed(2)} ج.م)
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-md shadow-[#f6b100]/20"
+                    >
+                      حفظ إعدادات المزود
+                    </button>
+                  </form>
+                </div>
+
+                {/* Direct Action Hub */}
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl space-y-4">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-[#f6b100]" />
+                    <span>عمليات المزامنة السريعة</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    أزرار سريعة لتحديث الخدمات وجلب أحدث حالات الطلبات من المزود
+                  </p>
+
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={handleSyncProviderServices}
+                      disabled={providerSyncingServices}
+                      className="w-full py-3 px-4 rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Layers className={`w-4 h-4 text-[#f6b100] ${providerSyncingServices ? 'animate-spin' : ''}`} />
+                        <div className="text-right">
+                          <div className="font-bold">استيراد وتحديث الخدمات من المزود</div>
+                          <small className="text-[10px] text-slate-400 block">
+                            جلب قائمة خدمات SMMFansFaster وتطبيق هامش الربح
+                          </small>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-[#f6b100]">
+                        {providerSyncingServices ? 'جاري الاستيراد...' : 'بدء الاستيراد'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncProviderOrders}
+                      disabled={providerSyncingOrders}
+                      className="w-full py-3 px-4 rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <RefreshCw className={`w-4 h-4 text-emerald-400 ${providerSyncingOrders ? 'animate-spin' : ''}`} />
+                        <div className="text-right">
+                          <div className="font-bold">مزامنة حالات الطلبات الحية</div>
+                          <small className="text-[10px] text-slate-400 block">
+                            تحديث حالات الطلبات (قيد التنفيذ / مكتمل / ملغي)
+                          </small>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-emerald-400">
+                        {providerSyncingOrders ? 'جاري المزامنة...' : 'مزامنة الآن'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: SMM Provider Orders Monitor */}
+              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
+                  <div>
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <ShoppingBag className="w-4 h-4 text-[#f6b100]" />
+                      <span>طلبات مزود SMMFansFaster</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      مراقبة الطلبات التي تم توجيهها للمزود أو التي تحتاج إلى إعادة توجيه
+                    </p>
+                  </div>
+                  <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#0f1117] border border-[#272c3d] text-slate-300">
+                    {orders.filter((o) => o.provider || o.providerOrderId).length} طلب مرتبط
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto flex-1">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                      <tr>
+                        <th className="p-3 font-bold">رقم الطلب</th>
+                        <th className="p-3 font-bold">الخدمة</th>
+                        <th className="p-3 font-bold">معرف المزود</th>
+                        <th className="p-3 font-bold">الكمية</th>
+                        <th className="p-3 font-bold">الحالة</th>
+                        <th className="p-3 font-bold">إجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#272c3d]/50">
+                      {orders
+                        .filter((o) => o.provider === 'SMMFansFaster' || o.providerOrderId || o.status === 'pending')
+                        .slice(0, 15)
+                        .map((o) => (
+                          <tr key={o.id} className="hover:bg-[#222634]/40 transition-colors">
+                            <td className="p-3 font-bold text-white">#{o.id}</td>
+                            <td className="p-3 max-w-[160px] truncate text-slate-200">
+                              <div className="font-semibold truncate">{o.serviceName}</div>
+                              <small className="text-[10px] text-slate-500 block truncate">{o.link}</small>
+                            </td>
+                            <td className="p-3 font-mono">
+                              {o.providerOrderId ? (
+                                <span className="text-amber-400 font-bold">#{o.providerOrderId}</span>
+                              ) : (
+                                <span className="text-slate-500 text-[10px]">قيد التوجيه</span>
+                              )}
+                            </td>
+                            <td className="p-3 font-bold text-white">{o.quantity.toLocaleString()}</td>
+                            <td className="p-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  o.status === 'completed'
+                                    ? 'bg-emerald-500/15 text-emerald-400'
+                                    : o.status === 'processing'
+                                    ? 'bg-blue-500/15 text-blue-400'
+                                    : o.status === 'cancelled'
+                                    ? 'bg-rose-500/15 text-rose-400'
+                                    : 'bg-amber-500/15 text-amber-300'
+                                }`}
+                              >
+                                {o.status === 'completed'
+                                  ? 'مكتمل'
+                                  : o.status === 'processing'
+                                  ? 'قيد التنفيذ'
+                                  : o.status === 'cancelled'
+                                  ? 'ملغي'
+                                  : 'معلق'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {o.status === 'pending' || !o.providerOrderId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResendOrder(o.id)}
+                                  disabled={resendingOrderId === o.id}
+                                  className="px-2.5 py-1 rounded bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-[10px] transition-colors flex items-center gap-1 shadow-sm"
+                                  title="إرسال الطلب لـ SMMFansFaster فوراً"
+                                >
+                                  <Zap className="w-3 h-3" />
+                                  <span>{resendingOrderId === o.id ? 'إرسال...' : 'توجيه للمزود'}</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-500 text-[10px]">موجّه للمزود ✓</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}

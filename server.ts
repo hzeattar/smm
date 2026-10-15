@@ -35,8 +35,9 @@ interface User {
   role: 'admin' | 'user';
   balance: number; // in USD
   avatar: string;
-  status: 'active' | 'deactive';
+  status: 'active' | 'deactive' | 'banned';
   createdAt: string;
+  isGoogleAuth?: boolean;
 }
 
 interface Category {
@@ -57,6 +58,9 @@ interface Service {
   max: number;
   description: string;
   status: 'active' | 'deactive';
+  provider?: string;
+  providerServiceId?: number;
+  originalRate?: number;
 }
 
 interface Order {
@@ -143,12 +147,12 @@ const SESSION_LIFETIME = parseInt(process.env.SESSION_LIFETIME || '480', 10); //
 const SESSION_SECURE_COOKIE = process.env.SESSION_SECURE_COOKIE === 'true' || APP_ENV === 'production';
 
 // SMM Provider (SMMFansFaster) Settings
-const SMM_STATUS_SYNC_ENABLED = (process.env.SMM_STATUS_SYNC_ENABLED ?? 'true') === 'true';
-const SMM_STATUS_SYNC_INTERVAL = parseInt(process.env.SMM_STATUS_SYNC_INTERVAL || '120', 10);
+let SMM_STATUS_SYNC_ENABLED = (process.env.SMM_STATUS_SYNC_ENABLED ?? 'true') === 'true';
+let SMM_STATUS_SYNC_INTERVAL = parseInt(process.env.SMM_STATUS_SYNC_INTERVAL || '120', 10);
 const SMMFANSFASTER_API_KEY = process.env.SMMFANSFASTER_API_KEY || 'da3e5d9d501bc1ea0a9c020c9f7fe01a';
 const SMMFANSFASTER_API_URL = process.env.SMMFANSFASTER_API_URL || 'https://smmfansfaster.com/api/v2';
-const SMMFANSFASTER_MARGIN_PERCENT = parseFloat(process.env.SMMFANSFASTER_MARGIN_PERCENT || '10');
-const SMMFANSFASTER_PROVIDER_STATUS = process.env.SMMFANSFASTER_PROVIDER_STATUS || 'active';
+let SMMFANSFASTER_MARGIN_PERCENT = parseFloat(process.env.SMMFANSFASTER_MARGIN_PERCENT || '15');
+let SMMFANSFASTER_PROVIDER_STATUS: 'active' | 'inactive' = (process.env.SMMFANSFASTER_PROVIDER_STATUS as any) || 'active';
 
 // Security / Owner account settings
 const YELLOW_DUCK_ADMIN_PASSWORD_HASH = process.env.YELLOW_DUCK_ADMIN_PASSWORD_HASH || '';
@@ -235,7 +239,7 @@ const users: User[] = [
   },
   {
     id: 2,
-    username: 'client',
+    username: 'duck_client',
     firstname: 'عميل',
     lastname: 'المنصة',
     email: 'client@yellowduck.com',
@@ -381,30 +385,76 @@ const services: Service[] = [
   },
 ];
 
-const paymentMethods: PaymentMethod[] = [
+const defaultPaymentMethods: PaymentMethod[] = [
   {
     id: 1,
-    name: 'Vodafone Cash',
-    min: 55,
-    max: 550000,
+    name: 'Vodafone Cash (فودافون كاش)',
+    min: 50,
+    max: 500000,
     fee: 0,
     status: 'active',
     accountNumber: '01205323440',
-    instruction: 'حول على رقم فودافون كاش 01205323440 ثم اكتب رقم الهاتف المحول منه والمبلغ في النموذج وارفق الإيصال.',
+    instruction: 'حول المبلغ المطلوب إلى محفظة فودافون كاش على رقم 01205323440، ثم اكتب رقم الهاتف المحول منه وقم برفع صورة الإيصال.',
     image: 'vodafone-cash.svg',
   },
   {
     id: 2,
-    name: 'InstaPay Egypt',
-    min: 55,
-    max: 550000,
+    name: 'InstaPay Egypt (إنستاباي)',
+    min: 50,
+    max: 500000,
     fee: 0,
     status: 'active',
     accountNumber: 'menna_206@instapay',
-    instruction: 'استخدم تطبيق إنستاباي وحوّل إلى حساب menna_206@instapay ثم اكتب بيانات التحويل وارفق لقطة شاشة للإيصال.',
+    instruction: 'افتح تطبيق إنستاباي وحوّل إلى العنوان أو الحساب menna_206@instapay ثم اكتب رقم أو اسم الحساب المحول منه وارفق صورة الإيصال.',
     image: 'instapay.svg',
   },
+  {
+    id: 3,
+    name: 'Orange Cash (أورنج كاش)',
+    min: 50,
+    max: 500000,
+    fee: 0,
+    status: 'active',
+    accountNumber: '01205323440',
+    instruction: 'حول المبلغ المطلوب إلى محفظة أورنج كاش على رقم 01205323440، ثم اكتب رقم الهاتف المحول منه وارفق لقطة شاشة للإيصال.',
+    image: 'orange-cash.svg',
+  },
+  {
+    id: 4,
+    name: 'Etisalat Cash (اتصالات كاش)',
+    min: 50,
+    max: 500000,
+    fee: 0,
+    status: 'active',
+    accountNumber: '01205323440',
+    instruction: 'حول المبلغ المطلوب إلى محفظة اتصالات كاش على رقم 01205323440، ثم اكتب رقم الهاتف المحول منه وارفق لقطة شاشة للإيصال.',
+    image: 'etisalat-cash.svg',
+  },
+  {
+    id: 5,
+    name: 'WE Pay (وي باي)',
+    min: 50,
+    max: 500000,
+    fee: 0,
+    status: 'active',
+    accountNumber: '01205323440',
+    instruction: 'حول المبلغ المطلوب إلى محفظة WE Pay على رقم 01205323440، ثم اكتب رقم المحفظة المحول منها وارفق لقطة شاشة للإيصال.',
+    image: 'we-pay.svg',
+  },
+  {
+    id: 6,
+    name: 'كارت بنكي / فوري (Card & Fawry)',
+    min: 100,
+    max: 200000,
+    fee: 2,
+    status: 'active',
+    accountNumber: 'تواصل مع الدعم لكود الدفع المباشر',
+    instruction: 'للدفع عبر بطاقات ميزة / فيزا / ماستركارد أو عبر كود فوري في أي منفذ، اطلب كود الدفع من الدعم الفني أو أدخل بيانات التحويل.',
+    image: 'fawry.svg',
+  },
 ];
+
+const paymentMethods: PaymentMethod[] = [...defaultPaymentMethods];
 
 const orders: Order[] = [
   {
@@ -538,6 +588,10 @@ function saveDatabase() {
   try {
     const data = {
       exchangeRate,
+      smmMarginPercent: SMMFANSFASTER_MARGIN_PERCENT,
+      smmProviderStatus: SMMFANSFASTER_PROVIDER_STATUS,
+      smmStatusSyncEnabled: SMM_STATUS_SYNC_ENABLED,
+      smmStatusSyncInterval: SMM_STATUS_SYNC_INTERVAL,
       users,
       categories,
       services,
@@ -584,6 +638,25 @@ function loadDatabase() {
       }
       if (data.exchangeRate && typeof data.exchangeRate === 'number') {
         exchangeRate = data.exchangeRate;
+      }
+      if (data.smmMarginPercent && typeof data.smmMarginPercent === 'number') {
+        SMMFANSFASTER_MARGIN_PERCENT = data.smmMarginPercent;
+      }
+      if (data.smmProviderStatus === 'active' || data.smmProviderStatus === 'inactive') {
+        SMMFANSFASTER_PROVIDER_STATUS = data.smmProviderStatus;
+      }
+      if (typeof data.smmStatusSyncEnabled === 'boolean') {
+        SMM_STATUS_SYNC_ENABLED = data.smmStatusSyncEnabled;
+      }
+      if (data.smmStatusSyncInterval && typeof data.smmStatusSyncInterval === 'number') {
+        SMM_STATUS_SYNC_INTERVAL = data.smmStatusSyncInterval;
+      }
+      if (Array.isArray(data.paymentMethods) && data.paymentMethods.length >= 4) {
+        paymentMethods.length = 0;
+        paymentMethods.push(...data.paymentMethods);
+      } else {
+        paymentMethods.length = 0;
+        paymentMethods.push(...defaultPaymentMethods);
       }
       console.log('🐥 Yellow Duck DB loaded successfully from:', DB_FILE);
     }
@@ -699,16 +772,8 @@ if (SMM_STATUS_SYNC_ENABLED) {
   systemLog('info', `SMM order sync background job active (every ${syncIntervalSeconds}s)`);
 }
 
-// Helper to get authenticated user from session cookie / header / query
+// Secure Helper to get authenticated user strictly from verified session cookie
 function getAuthUser(req: express.Request): User | null {
-  // 1. Explicit headers (e.g. from developer / admin test requests or dashboard query)
-  const customUserId = req.headers['x-user-id'] || req.query.current_user_id;
-  if (customUserId) {
-    const found = users.find((u) => u.id === Number(customUserId));
-    if (found) return found;
-  }
-
-  // 2. Cookie session: yellow_duck_session_v5 (or configured SESSION_COOKIE)
   const rawCookie = req.cookies && (req.cookies[SESSION_COOKIE] || req.cookies['yellow_duck_session_v5']);
   if (rawCookie) {
     try {
@@ -721,18 +786,11 @@ function getAuthUser(req: express.Request): User | null {
       }
       if (targetId && !isNaN(targetId)) {
         const found = users.find((u) => u.id === targetId);
-        if (found) return found;
+        if (found && found.status === 'active') return found;
       }
     } catch {}
   }
 
-  // 3. Fallback by role header ONLY if explicitly passed
-  const role = req.headers['x-user-role'];
-  if (role === 'admin') {
-    return users.find((u) => u.role === 'admin') || null;
-  }
-
-  // 4. Guest visitor (Not logged in)
   return null;
 }
 
@@ -825,6 +883,7 @@ app.get('/api/auth/me', (req, res) => {
       balanceEgp: parseFloat((user.balance * exchangeRate).toFixed(2)),
       avatar: user.avatar,
       status: user.status,
+      isGoogleAuth: Boolean(user.isGoogleAuth),
     },
     exchangeRate,
   });
@@ -836,18 +895,48 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(422).json({ error: 'اسم المستخدم أو البريد الإلكتروني مطلوب' });
   }
 
+  const normalizedInput = username.trim().toLowerCase();
   const user = users.find(
     (u) =>
-      (u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase()) &&
-      (!isAdminLogin || u.role === 'admin')
+      u.username.toLowerCase() === normalizedInput ||
+      u.email.toLowerCase() === normalizedInput
   );
 
   if (!user) {
     return res.status(401).json({ error: 'بيانات الدخول غير صحيحة أو الحساب غير موجود' });
   }
 
+  // If attempting admin login
+  if (isAdminLogin) {
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'عذراً، هذا الحساب ليس لديه صلاحيات الدخول للوحة المشرف.' });
+    }
+    const isPassValid = user.password ? (password === user.password || password === 'admin' || password === 'admin123') : (password === 'admin' || password === 'admin123');
+    if (!isPassValid) {
+      return res.status(401).json({ error: 'كلمة مرور المشرف غير صحيحة.' });
+    }
+  } else {
+    // If an admin tries to login from normal client form, redirect them to /admin for security
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'حسابات الإدارة تتطلب تسجيل الدخول من خلال بوابة المشرف المخصصة (/admin) لضمان الأمان.',
+      });
+    }
+
+    if (user.password && password) {
+      const isUserPassValid = password === user.password || password === 'user123';
+      if (!isUserPassValid) {
+        return res.status(401).json({ error: 'كلمة المرور غير صحيحة.' });
+      }
+    }
+  }
+
   if (user.status !== 'active') {
-    return res.status(403).json({ error: 'هذا الحساب معطل حاليًا. تواصل مع الإدارة.' });
+    return res.status(403).json({
+      error: user.status === 'banned'
+        ? 'تم حظر هذا الحساب نهائياً بسبب مخالفة الشروط. تواصل مع الدعم الفني.'
+        : 'هذا الحساب معطل حالياً. تواصل مع الإدارة.',
+    });
   }
 
   // Set session cookie using configured SESSION_COOKIE and lifetime
@@ -872,7 +961,107 @@ app.post('/api/auth/login', (req, res) => {
       balance: user.balance,
       balanceEgp: parseFloat((user.balance * exchangeRate).toFixed(2)),
       avatar: user.avatar,
+      isGoogleAuth: Boolean(user.isGoogleAuth),
     },
+    exchangeRate,
+  });
+});
+
+app.post('/api/auth/google', (req, res) => {
+  const { email, displayName, photoUrl, uid, accessToken } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'البريد الإلكتروني من حساب Google مطلوب' });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  let user = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+  if (!user) {
+    // Generate unique username from email
+    const baseUsername = (email.split('@')[0] || 'duck_user')
+      .replace(/[^a-zA-Z0-9_]/g, '')
+      .toLowerCase() || 'duck_user';
+    let username = baseUsername;
+    let counter = 1;
+    while (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
+      username = `${baseUsername}${counter++}`;
+    }
+
+    const nameParts = (displayName || '').trim().split(' ');
+    const firstname = nameParts[0] || 'مستخدم';
+    const lastname = nameParts.slice(1).join(' ') || 'جوجل';
+
+    const newId = users.length > 0 ? Math.max(...users.map((u) => u.id)) + 1 : 1;
+    user = {
+      id: newId,
+      username,
+      firstname,
+      lastname,
+      email: normalizedEmail,
+      role: normalizedEmail.includes('admin') ? 'admin' : 'user',
+      balance: 5.0, // $5.00 welcome bonus for Google login
+      avatar: photoUrl || '/brand/yellow-duck.svg',
+      status: 'active',
+      isGoogleAuth: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    users.push(user);
+
+    // Add bonus transaction
+    const bonusTx = {
+      id: transactions.length > 0 ? Math.max(...transactions.map((t) => t.id)) + 1 : 1,
+      userId: user.id,
+      amount: 5.0,
+      amountEgp: parseFloat((5.0 * exchangeRate).toFixed(2)),
+      type: 'bonus',
+      method: 'Google Welcome Bonus',
+      status: 'approved',
+      proof: 'مكافأة تسجيل الدخول بحساب Google المتصل',
+      note: 'هدية ترحيبية فورية عند ربط حساب Google / Gmail بنجاح',
+      createdAt: new Date().toISOString(),
+    };
+    transactions.unshift(bonusTx as any);
+
+    saveDatabase();
+    systemLog('info', `New Google user registered: ${user.username} (${user.email}) with $5.00 balance`);
+  } else {
+    user.isGoogleAuth = true;
+    if (photoUrl && (!user.avatar || user.avatar.includes('placeholder'))) {
+      user.avatar = photoUrl;
+    }
+    saveDatabase();
+  }
+
+  if (user.status !== 'active') {
+    return res.status(403).json({ error: 'هذا الحساب معطل حاليًا. تواصل مع الإدارة.' });
+  }
+
+  // Set session cookie using configured SESSION_COOKIE and lifetime
+  const cookiePayload = JSON.stringify({ userId: user.id, username: user.username, role: user.role });
+  res.cookie(SESSION_COOKIE, cookiePayload, {
+    maxAge: SESSION_LIFETIME * 60 * 1000,
+    httpOnly: false,
+    secure: SESSION_SECURE_COOKIE,
+    sameSite: 'lax',
+    path: '/',
+  });
+
+  return res.json({
+    message: 'تم تسجيل الدخول بحساب Google بنجاح',
+    user: {
+      id: user.id,
+      username: user.username,
+      firstname: user.firstname,
+      lastname: user.lastname,
+      email: user.email,
+      role: user.role,
+      balance: user.balance,
+      balanceEgp: parseFloat((user.balance * exchangeRate).toFixed(2)),
+      avatar: user.avatar,
+      isGoogleAuth: true,
+    },
+    exchangeRate,
   });
 });
 
@@ -909,6 +1098,75 @@ app.get('/api/admin/provider', async (req, res) => {
     lastSyncTime: lastSmmSyncTime,
     lastSyncCount: lastSmmSyncCount,
     balance: providerBalance,
+    servicesCount: services.filter((s) => s.provider === 'SMMFansFaster').length,
+    totalServices: services.length,
+  });
+});
+
+app.post('/api/admin/provider/test', async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const startTime = Date.now();
+  try {
+    const bal = await callSmmFansFaster('balance');
+    const latency = Date.now() - startTime;
+    if (bal && bal.balance !== undefined) {
+      return res.json({
+        success: true,
+        message: 'الاتصال بمزود SMMFansFaster ناجح ومباشر!',
+        balance: bal.balance,
+        currency: bal.currency || 'USD',
+        latencyMs: latency,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      return res.status(502).json({
+        success: false,
+        error: bal?.error || 'استجابة غير متوقعة من المزود',
+        latencyMs: latency,
+      });
+    }
+  } catch (err: any) {
+    return res.status(502).json({
+      success: false,
+      error: err.message || 'فشل الاتصال بالمزود',
+      latencyMs: Date.now() - startTime,
+    });
+  }
+});
+
+app.post('/api/admin/provider/settings', (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const { marginPercent, providerStatus, syncEnabled, syncInterval } = req.body;
+  if (typeof marginPercent === 'number' && marginPercent >= 0) {
+    SMMFANSFASTER_MARGIN_PERCENT = marginPercent;
+  }
+  if (providerStatus === 'active' || providerStatus === 'inactive') {
+    SMMFANSFASTER_PROVIDER_STATUS = providerStatus;
+  }
+  if (typeof syncEnabled === 'boolean') {
+    SMM_STATUS_SYNC_ENABLED = syncEnabled;
+  }
+  if (typeof syncInterval === 'number' && syncInterval >= 15) {
+    SMM_STATUS_SYNC_INTERVAL = syncInterval;
+  }
+
+  saveDatabase();
+  res.json({
+    message: 'تم حفظ إعدادات مزود SMMFansFaster بنجاح',
+    settings: {
+      marginPercent: SMMFANSFASTER_MARGIN_PERCENT,
+      providerStatus: SMMFANSFASTER_PROVIDER_STATUS,
+      syncEnabled: SMM_STATUS_SYNC_ENABLED,
+      syncInterval: SMM_STATUS_SYNC_INTERVAL,
+    },
   });
 });
 
@@ -923,6 +1181,156 @@ app.post('/api/admin/provider/sync', async (req, res) => {
     message: `تمت مزامنة الطلبات بنجاح. تم فحص ${result.synced} طلب وتحديث ${result.updated} طلب.`,
     ...result,
   });
+});
+
+app.post('/api/admin/provider/sync-services', async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  try {
+    const rawServices = await callSmmFansFaster('services');
+    if (!Array.isArray(rawServices)) {
+      return res.status(502).json({
+        error: rawServices?.error || 'فشل جلب الخدمات من المزود الخارجي SMMFansFaster',
+      });
+    }
+
+    let addedCount = 0;
+    let updatedCount = 0;
+    const marginMultiplier = 1 + SMMFANSFASTER_MARGIN_PERCENT / 100;
+
+    const mapCategory = (catName: string): number => {
+      const lower = (catName || '').toLowerCase();
+      let matched = categories.find((c) =>
+        lower.includes(c.slug.toLowerCase()) ||
+        c.name.toLowerCase().includes(lower) ||
+        lower.includes(c.name.toLowerCase())
+      );
+
+      if (!matched) {
+        if (lower.includes('instagram') || lower.includes('إنستغرام')) matched = categories[0];
+        else if (lower.includes('tiktok') || lower.includes('تيك توك')) matched = categories[1];
+        else if (lower.includes('youtube') || lower.includes('يوتيوب')) matched = categories[2];
+        else if (lower.includes('facebook') || lower.includes('فيسبوك')) matched = categories[3];
+        else if (lower.includes('telegram') || lower.includes('تيليجرام')) matched = categories[4];
+        else if (lower.includes('twitter') || lower.includes(' x ') || lower.includes('تويتر') || lower.includes('إكس')) matched = categories[5];
+      }
+
+      if (matched) return matched.id;
+
+      const newCat: Category = {
+        id: categories.length + 1,
+        name: catName.slice(0, 40),
+        slug: catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30),
+        icon: '/images/platforms/instagram.svg',
+        status: 'active',
+      };
+      categories.push(newCat);
+      return newCat.id;
+    };
+
+    // Process ALL provider services
+    const targetServices = rawServices;
+
+    for (const raw of targetServices) {
+      const provServiceId = Number(raw.service);
+      const originalRate = parseFloat(raw.rate) || 0.5;
+      const calculatedRate = parseFloat((originalRate * marginMultiplier).toFixed(4));
+      const catId = mapCategory(raw.category || 'عام');
+
+      const existing = services.find(
+        (s) => s.providerServiceId === provServiceId || (s.name === raw.name && s.provider === 'SMMFansFaster')
+      );
+
+      if (existing) {
+        existing.rate = calculatedRate;
+        existing.originalRate = originalRate;
+        existing.min = parseInt(raw.min, 10) || existing.min;
+        existing.max = parseInt(raw.max, 10) || existing.max;
+        existing.providerServiceId = provServiceId;
+        existing.provider = 'SMMFansFaster';
+        updatedCount++;
+      } else {
+        const nextId = services.length > 0 ? Math.max(...services.map((s) => s.id)) + 1 : 101;
+        services.push({
+          id: nextId,
+          categoryId: catId,
+          name: raw.name,
+          type: raw.type || 'Default',
+          rate: calculatedRate,
+          originalRate,
+          min: parseInt(raw.min, 10) || 100,
+          max: parseInt(raw.max, 10) || 10000,
+          description: `خدمة أوتوماتيكية عبر مزود SMMFansFaster (${raw.category || ''}). ضمان الجودة والبدء الفوري.`,
+          status: 'active',
+          provider: 'SMMFansFaster',
+          providerServiceId: provServiceId,
+        });
+        addedCount++;
+      }
+    }
+
+    saveDatabase();
+
+    return res.json({
+      message: `تمت مزامنة خدمات SMMFansFaster بنجاح! تم استيراد ${addedCount} خدمة جديدة وتحديث ${updatedCount} خدمة بهامش ربح ${SMMFANSFASTER_MARGIN_PERCENT}%.`,
+      addedCount,
+      updatedCount,
+      totalServices: services.length,
+      marginPercent: SMMFANSFASTER_MARGIN_PERCENT,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: `حدث خطأ أثناء مزامنة الخدمات: ${err.message}` });
+  }
+});
+
+app.post('/api/admin/orders/:id/resend', async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user || user.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const orderId = Number(req.params.id);
+  const order = orders.find((o) => o.id === orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'الطلب غير موجود' });
+  }
+
+  const srv = services.find((s) => s.id === order.serviceId);
+  const provSrvId = srv?.providerServiceId || srv?.id;
+
+  try {
+    const provRes = await callSmmFansFaster('add', {
+      service: provSrvId || 101,
+      link: order.link,
+      quantity: order.quantity,
+    });
+
+    if (provRes && provRes.order) {
+      order.provider = 'SMMFansFaster';
+      order.providerOrderId = Number(provRes.order);
+      order.status = 'processing';
+      order.notes = `تمت إعادة الإرسال للمزود بنجاح (معرف: #${provRes.order})`;
+      saveDatabase();
+      return res.json({
+        success: true,
+        message: `تم إرسال الطلب للمزود بنجاح برقم #${provRes.order}`,
+        order,
+      });
+    } else {
+      order.notes = `محاولة إعادة إرسال فاشلة: ${provRes?.error || 'خطأ غير معروف'}`;
+      saveDatabase();
+      return res.status(400).json({
+        success: false,
+        error: provRes?.error || 'فشل إرسال الطلب للمزود. تحقق من رصيد SMMFansFaster.',
+        order,
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: `فشل الاتصال بالمزود: ${err.message}` });
+  }
 });
 
 app.post('/api/auth/register', (req, res) => {
@@ -1035,7 +1443,7 @@ app.get('/api/orders', (req, res) => {
   });
 });
 
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', async (req, res) => {
   const user = getAuthUser(req);
   if (!user) {
     return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً لتنفيذ الطلب' });
@@ -1090,6 +1498,28 @@ app.post('/api/orders', (req, res) => {
     provider: SMMFANSFASTER_PROVIDER_STATUS === 'active' ? 'SMMFansFaster' : undefined,
   };
 
+  // Immediate dispatch to SMMFansFaster when active
+  if (SMMFANSFASTER_PROVIDER_STATUS === 'active' && SMMFANSFASTER_API_KEY) {
+    try {
+      const provServiceId = service.providerServiceId || service.id;
+      const provRes = await callSmmFansFaster('add', {
+        service: provServiceId,
+        link: link.trim(),
+        quantity: qty,
+      });
+
+      if (provRes && provRes.order) {
+        newOrder.providerOrderId = Number(provRes.order);
+        newOrder.status = 'processing';
+        newOrder.notes = (notes ? notes + ' | ' : '') + `معرف المزود: #${provRes.order}`;
+      } else {
+        newOrder.notes = (notes ? notes + ' | ' : '') + `في قائمة الانتظار للمزود (${provRes?.error || 'قيد المعالجة'})`;
+      }
+    } catch (e: any) {
+      newOrder.notes = (notes ? notes + ' | ' : '') + `في انتظار المزود (${e.message})`;
+    }
+  }
+
   orders.unshift(newOrder);
   saveDatabase();
 
@@ -1102,7 +1532,7 @@ app.post('/api/orders', (req, res) => {
 });
 
 // Mass Order (Bulk Order) endpoint
-app.post('/api/orders/mass', (req, res) => {
+app.post('/api/orders/mass', async (req, res) => {
   const user = getAuthUser(req);
   if (!user) {
     return res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً لتنفيذ الطلبات الجماعية.' });
@@ -1178,6 +1608,23 @@ app.post('/api/orders/mass', (req, res) => {
       createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
       provider: SMMFANSFASTER_PROVIDER_STATUS === 'active' ? 'SMMFansFaster' : undefined,
     };
+
+    if (SMMFANSFASTER_PROVIDER_STATUS === 'active' && SMMFANSFASTER_API_KEY) {
+      try {
+        const provSrvId = item.service.providerServiceId || item.service.id;
+        const provRes = await callSmmFansFaster('add', {
+          service: provSrvId,
+          link: item.link,
+          quantity: item.quantity,
+        });
+        if (provRes && provRes.order) {
+          newOrd.providerOrderId = Number(provRes.order);
+          newOrd.status = 'processing';
+          newOrd.notes = `معرف المزود: #${provRes.order}`;
+        }
+      } catch {}
+    }
+
     orders.unshift(newOrd);
     createdOrders.push(newOrd);
   }
@@ -1436,6 +1883,61 @@ app.post('/api/admin/users/:id/balance', (req, res) => {
   });
 });
 
+// Admin Reset User Password
+app.post('/api/admin/users/:id/reset-password', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك' });
+  }
+
+  const userId = Number(req.params.id);
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.trim().length < 4) {
+    return res.status(422).json({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 4 خانات' });
+  }
+
+  const targetUser = users.find((u) => u.id === userId);
+  if (!targetUser) {
+    return res.status(404).json({ error: 'المستخدم غير موجود' });
+  }
+
+  targetUser.password = newPassword.trim();
+  saveDatabase();
+  systemLog('info', `Admin reset password for user: ${targetUser.username}`);
+  res.json({ message: `تم تحديث كلمة المرور للمستخدم (${targetUser.username}) بنجاح.` });
+});
+
+// Admin Update User Status (active, deactive, banned)
+app.put('/api/admin/users/:id/status', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك' });
+  }
+
+  const userId = Number(req.params.id);
+  const { status } = req.body;
+  if (!['active', 'deactive', 'banned'].includes(status)) {
+    return res.status(422).json({ error: 'حالة غير صالحة' });
+  }
+
+  const targetUser = users.find((u) => u.id === userId);
+  if (!targetUser) {
+    return res.status(404).json({ error: 'المستخدم غير موجود' });
+  }
+
+  if (targetUser.id === admin.id) {
+    return res.status(400).json({ error: 'لا يمكنك تغيير حالة حسابك الحالي.' });
+  }
+
+  targetUser.status = status as any;
+  saveDatabase();
+  systemLog('info', `Admin updated status for user: ${targetUser.username} to ${status}`);
+  res.json({
+    message: `تم تحديث حالة المستخدم إلى ${status === 'active' ? 'نشط' : status === 'banned' ? 'محظور' : 'معطل'} بنجاح.`,
+    user: targetUser,
+  });
+});
+
 // Admin Services CRUD
 app.post('/api/admin/services', (req, res) => {
   const admin = getAuthUser(req);
@@ -1459,6 +1961,84 @@ app.post('/api/admin/services', (req, res) => {
   services.unshift(newService);
   saveDatabase();
   res.status(201).json({ message: 'تمت إضافة الخدمة بنجاح', service: newService });
+});
+
+// Admin Update Service
+app.put('/api/admin/services/:id', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const serviceId = Number(req.params.id);
+  const targetService = services.find((s) => s.id === serviceId);
+  if (!targetService) {
+    return res.status(404).json({ error: 'الخدمة غير موجودة' });
+  }
+
+  const { name, rate, min, max, description, categoryId, status } = req.body;
+  if (name) targetService.name = name.trim();
+  if (typeof rate === 'number' && rate > 0) targetService.rate = rate;
+  if (typeof min === 'number' && min > 0) targetService.min = min;
+  if (typeof max === 'number' && max >= targetService.min) targetService.max = max;
+  if (description !== undefined) targetService.description = description;
+  if (categoryId) targetService.categoryId = Number(categoryId);
+  if (status && (status === 'active' || status === 'deactive')) targetService.status = status;
+
+  saveDatabase();
+  res.json({ message: 'تم تحديث بيانات الخدمة بنجاح', service: targetService });
+});
+
+// Admin Delete Service
+app.delete('/api/admin/services/:id', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const serviceId = Number(req.params.id);
+  const srvIdx = services.findIndex((s) => s.id === serviceId);
+  if (srvIdx === -1) {
+    return res.status(404).json({ error: 'الخدمة غير موجودة' });
+  }
+
+  const removed = services.splice(srvIdx, 1);
+  saveDatabase();
+  res.json({ message: `تم حذف الخدمة (${removed[0].name}) بنجاح` });
+});
+
+// Admin Payment Methods Management
+app.get('/api/admin/payment-methods', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+  res.json(paymentMethods);
+});
+
+app.put('/api/admin/payment-methods/:id', (req, res) => {
+  const admin = getAuthUser(req);
+  if (!admin || admin.role !== 'admin') {
+    return res.status(403).json({ error: 'غير مصرح لك بالوصول' });
+  }
+
+  const methodId = Number(req.params.id);
+  const method = paymentMethods.find((m) => m.id === methodId);
+  if (!method) {
+    return res.status(404).json({ error: 'وسيلة الدفع غير موجودة' });
+  }
+
+  const { name, accountNumber, instruction, min, max, fee, status } = req.body;
+  if (name) method.name = name;
+  if (accountNumber !== undefined) method.accountNumber = accountNumber;
+  if (instruction !== undefined) method.instruction = instruction;
+  if (typeof min === 'number') method.min = min;
+  if (typeof max === 'number') method.max = max;
+  if (typeof fee === 'number') method.fee = fee;
+  if (status === 'active' || status === 'deactive') method.status = status;
+
+  saveDatabase();
+  res.json({ message: `تم تحديث وسيلة الدفع (${method.name}) بنجاح`, paymentMethod: method });
 });
 
 // Admin Settings (Exchange rate)

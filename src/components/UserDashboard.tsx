@@ -446,20 +446,42 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const totalSpentUsd = orders.reduce((sum, o) => sum + o.charge, 0);
 
   return (
-    <div className="min-h-screen bg-[#0f1117] py-8">
+    <div className="min-h-screen bg-[#0f1117] pt-4 pb-28 md:py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-8">
         {/* Welcome Hero */}
         <div className="relative rounded-3xl bg-gradient-to-r from-[#181b26] via-[#1c202e] to-[#181b26] border border-[#272c3d] p-6 sm:p-8 overflow-hidden shadow-xl">
           <div className="absolute top-0 right-0 w-64 h-64 bg-[#f6b100]/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-center gap-4">
-              <img
-                src={`/images/avatars/${user.avatar || 'duck-happy.jpg'}`}
-                alt={user.firstname}
-                className="w-16 h-16 rounded-2xl object-cover border-2 border-[#f6b100]/60 shadow-lg"
-              />
+              <div className="relative">
+                <img
+                  src={user.avatar?.startsWith('http') || user.avatar?.startsWith('/brand') ? user.avatar : `/images/avatars/${user.avatar || 'duck-happy.jpg'}`}
+                  alt={user.firstname}
+                  className="w-16 h-16 rounded-2xl object-cover border-2 border-[#f6b100]/60 shadow-lg"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/brand/yellow-duck.svg';
+                  }}
+                />
+                {user.isGoogleAuth && (
+                  <span className="absolute -bottom-1 -left-1 w-5 h-5 bg-white rounded-full p-0.5 shadow flex items-center justify-center" title="حساب موثق من Google">
+                    <svg className="w-full h-full" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                    </svg>
+                  </span>
+                )}
+              </div>
               <div>
-                <span className="text-xs font-semibold text-[#f6b100]">أهلًا بك مجددًا 👋</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-[#f6b100]">أهلًا بك مجددًا 👋</span>
+                  {user.isGoogleAuth && (
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border border-emerald-500/30">
+                      <span>متصل بـ Google / Gmail</span>
+                    </span>
+                  )}
+                </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-white">
                   {user.firstname} {user.lastname}
                 </h1>
@@ -1090,26 +1112,47 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                   <label className="block text-xs font-bold text-slate-300 mb-1.5">
                     صورة إيصال التحويل (اختياري - لتسريع الفحص)
                   </label>
-                  <div className="flex items-center gap-3">
-                    <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] hover:border-[#f6b100] text-slate-300 text-xs font-medium flex items-center gap-2 transition-colors">
-                      <Upload className="w-4 h-4 text-[#f6b100]" />
-                      <span>{proofImage ? 'تم اختيار صورة الإيصال' : 'اختر صورة من جهازك'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => setProofImage(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] hover:border-[#f6b100] text-slate-300 text-xs font-medium flex items-center gap-2 transition-colors">
+                        <Upload className="w-4 h-4 text-[#f6b100]" />
+                        <span>{proofImage ? 'تغيير صورة الإيصال' : 'اختر صورة من جهازك'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => setProofImage(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                      {proofImage && (
+                        <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>تم إرفاق الإيصال</span>
+                        </span>
+                      )}
+                    </div>
                     {proofImage && (
-                      <span className="text-xs text-emerald-400 font-semibold">✓ جاهزة للإرسال</span>
+                      <div className="relative inline-block border-2 border-emerald-500/50 rounded-2xl overflow-hidden shadow-lg p-1 bg-[#0f1117]">
+                        <img
+                          src={proofImage}
+                          alt="معاينة إيصال التحويل"
+                          className="w-32 h-32 object-contain rounded-xl bg-black/40"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setProofImage(null)}
+                          className="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] transition-colors shadow"
+                        >
+                          إلغاء الصورة
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1683,6 +1726,82 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Mobile Sticky Bottom Navigation Bar */}
+      <nav aria-label="شريط التنقل السريع للهاتف" className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#272c3d] px-2 py-1.5 flex items-center justify-around shadow-2xl">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('new-order');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[54px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all ${
+            activeTab === 'new-order' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium hover:text-slate-200'
+          }`}
+        >
+          <PlusCircle className={`w-5 h-5 ${activeTab === 'new-order' ? 'scale-110 text-[#f6b100]' : ''}`} />
+          <span className="text-[10px] mt-1">طلب جديد</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('orders');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[54px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all relative ${
+            activeTab === 'orders' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium hover:text-slate-200'
+          }`}
+        >
+          <ShoppingBag className={`w-5 h-5 ${activeTab === 'orders' ? 'scale-110 text-[#f6b100]' : ''}`} />
+          <span className="text-[10px] mt-1">طلباتي</span>
+          {orders.length > 0 && (
+            <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-[#f6b100]"></span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('add-funds');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[54px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all ${
+            activeTab === 'add-funds' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium hover:text-slate-200'
+          }`}
+        >
+          <Wallet className={`w-5 h-5 ${activeTab === 'add-funds' ? 'scale-110 text-[#f6b100]' : ''}`} />
+          <span className="text-[10px] mt-1">شحن رصيد</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('services');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[54px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all ${
+            activeTab === 'services' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium hover:text-slate-200'
+          }`}
+        >
+          <Layers className={`w-5 h-5 ${activeTab === 'services' ? 'scale-110 text-[#f6b100]' : ''}`} />
+          <span className="text-[10px] mt-1">الخدمات</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('tickets');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[54px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all ${
+            activeTab === 'tickets' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium hover:text-slate-200'
+          }`}
+        >
+          <MessageSquare className={`w-5 h-5 ${activeTab === 'tickets' ? 'scale-110 text-[#f6b100]' : ''}`} />
+          <span className="text-[10px] mt-1">الدعم</span>
+        </button>
+      </nav>
     </div>
   );
 };

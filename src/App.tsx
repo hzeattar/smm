@@ -4,13 +4,15 @@ import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { UserDashboard } from './components/UserDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
+import { AdminLoginPage } from './components/AdminLoginPage';
 import { AuthModal } from './components/AuthModal';
 import { TermsModal } from './components/TermsModal';
+import { initAuth, logoutGoogle } from './lib/firebaseAuth';
 
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [exchangeRate, setExchangeRate] = useState<number>(55);
-  const [currentView, setCurrentView] = useState<'welcome' | 'dashboard' | 'admin'>('welcome');
+  const [currentView, setCurrentView] = useState<'welcome' | 'dashboard' | 'admin' | 'admin-login'>('welcome');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
@@ -26,6 +28,22 @@ export const App: React.FC = () => {
         if (data.exchangeRate) {
           setExchangeRate(data.exchangeRate);
         }
+
+        // Check path on initial load
+        const path = window.location.pathname;
+        if (path === '/admin' || path.startsWith('/admin')) {
+          if (data.user && data.user.role === 'admin') {
+            setCurrentView('admin');
+          } else {
+            setCurrentView('admin-login');
+          }
+        } else if (path === '/dashboard') {
+          if (data.user) {
+            setCurrentView(data.user.role === 'admin' ? 'admin' : 'dashboard');
+          } else {
+            setCurrentView('welcome');
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to load user', err);
@@ -36,29 +54,42 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     fetchCurrentUser();
-  }, []);
+    const unsubscribe = initAuth();
 
-  // Quick Switch between user and admin
-  const handleSwitchRole = async () => {
-    if (!user) return;
-    const targetUserId = user.role === 'admin' ? 2 : 1;
-    try {
-      const res = await fetch(`/api/auth/me?current_user_id=${targetUserId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setCurrentView(data.user.role === 'admin' ? 'admin' : 'dashboard');
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/admin' || path.startsWith('/admin')) {
+        if (user && user.role === 'admin') {
+          setCurrentView('admin');
+        } else {
+          setCurrentView('admin-login');
+        }
+      } else if (path === '/dashboard') {
+        if (user) {
+          setCurrentView(user.role === 'admin' ? 'admin' : 'dashboard');
+        } else {
+          setCurrentView('welcome');
+        }
+      } else {
+        setCurrentView('welcome');
       }
-    } catch (err) {
-      console.error('Failed to switch role', err);
-    }
-  };
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [user]);
 
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
+    await logoutGoogle();
     setUser(null);
+    window.history.pushState({}, '', '/');
     setCurrentView('welcome');
   };
 
@@ -69,26 +100,58 @@ export const App: React.FC = () => {
 
   const handleLoginSuccess = (loggedInUser: User) => {
     setUser(loggedInUser);
-    setCurrentView(loggedInUser.role === 'admin' ? 'admin' : 'dashboard');
+    if (loggedInUser.role === 'admin') {
+      window.history.pushState({}, '', '/admin');
+      setCurrentView('admin');
+    } else {
+      window.history.pushState({}, '', '/dashboard');
+      setCurrentView('dashboard');
+    }
+  };
+
+  const handleAdminLoginSuccess = (adminUser: User) => {
+    setUser(adminUser);
+    window.history.pushState({}, '', '/admin');
+    setCurrentView('admin');
+  };
+
+  const handleAdminBackToStore = () => {
+    window.history.pushState({}, '', '/');
+    setCurrentView('welcome');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNavigate = (view: string) => {
-    if (view === 'dashboard' || view === 'admin') {
+    if (view === 'admin') {
+      window.history.pushState({}, '', '/admin');
+      if (user && user.role === 'admin') {
+        setCurrentView('admin');
+      } else {
+        setCurrentView('admin-login');
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (view === 'dashboard') {
       if (!user) {
         handleOpenAuth('login');
         return;
       }
-      if (view === 'admin' && user.role !== 'admin') {
-        // switch to admin or notify
+      if (user.role === 'admin') {
+        window.history.pushState({}, '', '/admin');
+        setCurrentView('admin');
+      } else {
+        window.history.pushState({}, '', '/dashboard');
         setCurrentView('dashboard');
-        return;
       }
-      setCurrentView(view as any);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      setCurrentView('welcome');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
     }
+
+    window.history.pushState({}, '', '/');
+    setCurrentView('welcome');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   if (loading) {
@@ -102,6 +165,16 @@ export const App: React.FC = () => {
     );
   }
 
+  // Dedicated Admin Login Gate View (when accessing /admin without admin session)
+  if (currentView === 'admin-login' || (currentView === 'admin' && (!user || user.role !== 'admin'))) {
+    return (
+      <AdminLoginPage
+        onLoginSuccess={handleAdminLoginSuccess}
+        onBackToStore={handleAdminBackToStore}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0f1117] text-slate-100 flex flex-col selection:bg-[#f6b100] selection:text-black">
       <Header
@@ -111,7 +184,6 @@ export const App: React.FC = () => {
         onNavigate={handleNavigate}
         onOpenAuth={handleOpenAuth}
         onLogout={handleLogout}
-        onSwitchRole={handleSwitchRole}
       />
 
       <main className="flex-1">
