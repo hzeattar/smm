@@ -25,11 +25,8 @@ const resolvedConfig = {
 const app = getApps().length > 0 ? getApp() : initializeApp(resolvedConfig);
 export const auth = getAuth(app);
 
-// Configure Google Provider with authorized scopes
+// Configure Google Provider with standard non-sensitive scopes only (prevents "Google hasn't verified this app" warning)
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/userinfo.email');
-googleProvider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
@@ -77,11 +74,10 @@ export const googleSignIn = async (): Promise<{
     isSigningIn = true;
     const result = await signInWithPopup(auth, googleProvider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('لم يتم استلام مفتاح الوصول من حساب Google.');
-    }
+    const idToken = await result.user.getIdToken().catch(() => '');
+    const token = credential?.accessToken || idToken || 'firebase_auth_token';
 
-    cachedAccessToken = credential.accessToken;
+    cachedAccessToken = token;
     currentFirebaseUser = result.user;
 
     // Send credentials to backend to authenticate or register user in Yellow Duck system

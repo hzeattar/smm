@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HOST = '0.0.0.0';
 
@@ -19,7 +20,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
@@ -51,6 +52,10 @@ interface Category {
 interface Service {
   id: number;
   categoryId: number;
+  categoryName?: string;
+  subcategoryDisplay?: string;
+  isArabicCategory?: boolean;
+  platformName?: string;
   name: string;
   type: string;
   rate: number; // USD per 1000
@@ -267,18 +272,185 @@ const users: User[] = [
 
 const categories: Category[] = [
   { id: 1, name: 'إنستغرام - Instagram', slug: 'instagram', icon: '/images/platforms/instagram.svg', status: 'active' },
+  { id: 4, name: 'فيسبوك - Facebook', slug: 'facebook', icon: '/images/platforms/facebook.svg', status: 'active' },
   { id: 2, name: 'تيك توك - TikTok', slug: 'tiktok', icon: '/images/platforms/tiktok.svg', status: 'active' },
   { id: 3, name: 'يوتيوب - YouTube', slug: 'youtube', icon: '/images/platforms/youtube.svg', status: 'active' },
-  { id: 4, name: 'فيسبوك - Facebook', slug: 'facebook', icon: '/images/platforms/facebook.svg', status: 'active' },
   { id: 5, name: 'تيليجرام - Telegram', slug: 'telegram', icon: '/images/platforms/telegram.svg', status: 'active' },
   { id: 6, name: 'إكس - X (Twitter)', slug: 'x', icon: '/images/platforms/x.svg', status: 'active' },
-  { id: 7, name: 'سبوتيفاي - Spotify', slug: 'spotify', icon: '/images/platforms/spotify.svg', status: 'active' },
   { id: 8, name: 'سناب شات - Snapchat', slug: 'snapchat', icon: '/images/platforms/snapchat.svg', status: 'active' },
+  { id: 7, name: 'سبوتيفاي - Spotify', slug: 'spotify', icon: '/images/platforms/spotify.svg', status: 'active' },
   { id: 9, name: 'ثريدز وكواي - Threads & Kwai', slug: 'threads-kwai', icon: '/images/platforms/tiktok.svg', status: 'active' },
   { id: 10, name: 'ديسكورد ولينكد إن - Discord & LinkedIn', slug: 'discord-linkedin', icon: '/images/platforms/discord.svg', status: 'active' },
   { id: 11, name: 'زيارات وترافيك مواقع - Website Traffic', slug: 'traffic', icon: '/images/platforms/youtube.svg', status: 'active' },
   { id: 12, name: 'خدمات رقمية متنوعة - Other Digital', slug: 'other', icon: '/brand/yellow-duck.svg', status: 'active' },
 ];
+
+function cleanCategoryText(str?: string): string {
+  return String(str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&#039;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchPlatformFromText(text?: string): number {
+  const raw = String(text || '').normalize('NFKD').toLowerCase();
+  if (
+    raw.includes('instagram') ||
+    raw.includes('انستغرام') ||
+    raw.includes('إنستغرام') ||
+    raw.includes('انستقرام') ||
+    raw.includes('إنستقرام') ||
+    raw.includes('انستجرام') ||
+    raw.includes('إنستجرام') ||
+    raw.includes('انستا') ||
+    raw.includes('igtv')
+  ) {
+    return 1;
+  }
+  if (
+    raw.includes('facebook') ||
+    raw.includes('فيسبوك') ||
+    raw.includes('فيس بوك') ||
+    raw.includes('فيس  بوك') ||
+    raw.includes('الفيسبوك')
+  ) {
+    return 4;
+  }
+  if (raw.includes('tiktok') || raw.includes('tik tok') || raw.includes('تيك توك') || raw.includes('تيكتوك')) {
+    return 2;
+  }
+  if (raw.includes('youtube') || raw.includes('يوتيوب') || raw.includes('اليوتيوب')) {
+    return 3;
+  }
+  if (
+    raw.includes('telegram') ||
+    raw.includes('تيليجرام') ||
+    raw.includes('تليجرام') ||
+    raw.includes('تلجرام') ||
+    raw.includes('تيليغرام')
+  ) {
+    return 5;
+  }
+  if (
+    raw.includes('twitter') ||
+    raw.includes('تويتر') ||
+    raw.includes('tweet') ||
+    raw.includes('retweet') ||
+    raw.includes('x.com') ||
+    raw.includes(' x -') ||
+    raw.includes('إكس')
+  ) {
+    return 6;
+  }
+  if (raw.includes('snapchat') || raw.includes('snap chat') || raw.includes('سناب')) {
+    return 8;
+  }
+  if (
+    raw.includes('spotify') ||
+    raw.includes('سبوتيفاي') ||
+    raw.includes('soundcloud') ||
+    raw.includes('ساوند كلاود') ||
+    raw.includes('audiomack') ||
+    raw.includes('deezer') ||
+    raw.includes('itunes') ||
+    raw.includes('apple music')
+  ) {
+    return 7;
+  }
+  if (
+    raw.includes('threads') ||
+    raw.includes('ثريدز') ||
+    raw.includes('kwai') ||
+    raw.includes('كواي') ||
+    raw.includes('likee') ||
+    raw.includes('لايكي') ||
+    raw.includes('snack video')
+  ) {
+    return 9;
+  }
+  if (
+    raw.includes('discord') ||
+    raw.includes('ديسكورد') ||
+    raw.includes('linkedin') ||
+    raw.includes('لينكد') ||
+    raw.includes('twitch') ||
+    raw.includes('تويتش') ||
+    raw.includes('kick') ||
+    raw.includes('bigo') ||
+    raw.includes('jaco') ||
+    raw.includes('clubhouse') ||
+    raw.includes('reddit') ||
+    raw.includes('pinterest') ||
+    raw.includes('whatsapp') ||
+    raw.includes('واتساب') ||
+    raw.includes('واتس اب')
+  ) {
+    return 10;
+  }
+  if (
+    raw.includes('traffic') ||
+    raw.includes('website') ||
+    raw.includes('visitor') ||
+    raw.includes('seo') ||
+    raw.includes('زوار') ||
+    raw.includes('ترافيك') ||
+    raw.includes('مواقع')
+  ) {
+    return 11;
+  }
+  return 12;
+}
+
+function getSmartArabicPrefix(rawCat: string, platformId: number): string {
+  const norm = rawCat.normalize('NFKD').toLowerCase();
+  const platformNames: Record<number, string> = {
+    1: 'إنستغرام',
+    4: 'فيسبوك',
+    2: 'تيك توك',
+    3: 'يوتيوب',
+    5: 'تيليجرام',
+    6: 'إكس (تويتر)',
+    8: 'سناب شات',
+    7: 'سبوتيفاي وصوتيات',
+    9: 'ثريدز وكواي',
+    10: 'ديسكورد ولينكد إن',
+    11: 'زيارات وترافيك',
+    12: 'خدمات متنوعة',
+  };
+  const pName = platformNames[platformId] || 'خدمات';
+  const types: string[] = [];
+  if (norm.includes('follower') || norm.includes('subscrib') || norm.includes('member')) {
+    types.push(platformId === 3 ? 'مشتركين' : platformId === 5 || platformId === 10 ? 'أعضاء ومتابعين' : 'متابعين');
+  }
+  if (norm.includes('like') || norm.includes('react') || norm.includes('heart') || norm.includes('emoticon')) {
+    types.push(norm.includes('react') || norm.includes('emoticon') ? 'تفاعلات ولايكات' : 'لايكات');
+  }
+  if (
+    norm.includes('view') ||
+    norm.includes('watch') ||
+    norm.includes('play') ||
+    norm.includes('stream') ||
+    norm.includes('live') ||
+    norm.includes('reel') ||
+    norm.includes('story') ||
+    norm.includes('short')
+  ) {
+    if (norm.includes('live') || norm.includes('stream')) types.push('مشاهدات بث مباشر');
+    else if (norm.includes('reel')) types.push('مشاهدات ريلز');
+    else if (norm.includes('story')) types.push('مشاهدات ستوري');
+    else if (norm.includes('watch')) types.push('ساعات مشاهدة');
+    else types.push('مشاهدات');
+  }
+  if (norm.includes('comment') || norm.includes('reply')) types.push('تعليقات');
+  if (norm.includes('share') || norm.includes('retweet') || norm.includes('repost')) types.push('مشاركات');
+  if (norm.includes('save') || norm.includes('favorite')) types.push('حفظ ومفضلة');
+  if (norm.includes('poll') || norm.includes('vote')) types.push('تصويت');
+  if (norm.includes('traffic') || norm.includes('visitor')) types.push('زيارات');
+
+  const typeLabel = types.length > 0 ? types.slice(0, 2).join(' و') : 'خدمات';
+  return `${pName} - ${typeLabel}`;
+}
 
 const services: Service[] = [
   {
@@ -677,6 +849,19 @@ function ensureDefaultAccounts() {
       defaultClient.password = YELLOW_DUCK_USER_PASSWORD_HASH || 'user123';
     }
   }
+
+  // 3. Sanitize any generic placeholder names ("المستخدم المتصل", "مستخدم جوجل") so actual username is displayed
+  for (const u of users) {
+    if (
+      u.firstname === 'المستخدم' ||
+      u.firstname === 'مستخدم' ||
+      u.lastname === 'المتصل' ||
+      u.lastname === 'جوجل'
+    ) {
+      u.firstname = u.username;
+      u.lastname = '';
+    }
+  }
 }
 
 async function saveToMySQL() {
@@ -754,11 +939,17 @@ function loadDatabase() {
       }
       if (Array.isArray(data.services) && data.services.length > 0) {
         services.length = 0;
-        services.push(...data.services);
-      }
-      if (Array.isArray(data.categories) && data.categories.length > 0) {
-        categories.length = 0;
-        categories.push(...data.categories);
+        const normalizedServices = data.services.map((s: any) => {
+          const cleanCat = cleanCategoryText(s.categoryName);
+          const detectedCatId = cleanCat ? matchPlatformFromText(cleanCat) : s.categoryId || 12;
+          return {
+            ...s,
+            categoryId: detectedCatId,
+            categoryName: cleanCat || undefined,
+          };
+        });
+        normalizedServices.sort((a: Service, b: Service) => a.rate - b.rate);
+        services.push(...normalizedServices);
       }
       if (data.exchangeRate && typeof data.exchangeRate === 'number') {
         exchangeRate = data.exchangeRate;
@@ -967,7 +1158,8 @@ async function autoSyncProviderServicesOnBoot() {
       const provId = Number(raw.service);
       const origRate = parseFloat(raw.rate) || 0.5;
       const calcRate = parseFloat((origRate * marginMultiplier).toFixed(4));
-      const catId = getCatId(raw.category || '', raw.name || '');
+      const cleanCat = cleanCategoryText(raw.category || 'خدمات عامة');
+      const catId = matchPlatformFromText(cleanCat);
       return {
         id: provId,
         categoryId: catId,
@@ -977,14 +1169,15 @@ async function autoSyncProviderServicesOnBoot() {
         originalRate: origRate,
         min: parseInt(raw.min, 10) || 10,
         max: parseInt(raw.max, 10) || 100000,
-        description: `خدمة أوتوماتيكية عبر سيرفرات SMMFansFaster (${raw.category || ''}). تنفيذ فوري وآمن.`,
+        description: `خدمة أوتوماتيكية عبر سيرفرات SMMFansFaster (${cleanCat}). تنفيذ فوري وآمن.`,
         status: 'active',
         provider: 'SMMFansFaster',
         providerServiceId: provId,
-        categoryName: raw.category || '',
+        categoryName: cleanCat,
       };
     });
 
+    syncedServices.sort((a, b) => a.rate - b.rate);
     services.length = 0;
     services.push(...syncedServices);
     saveDatabase();
@@ -1068,17 +1261,38 @@ if (SMM_STATUS_SYNC_ENABLED) {
   systemLog('info', `SMM order sync background job active (every ${syncIntervalSeconds}s)`);
 }
 
-// Secure Helper to get authenticated user strictly from verified session cookie
+// Helper to set session cookie reliably on Railway HTTPS, custom domains, and preview iframes
+function setSessionCookie(req: express.Request, res: express.Response, user: User) {
+  const cookiePayload = JSON.stringify({ userId: user.id, username: user.username, role: user.role });
+  const isSecureReq =
+    req.secure ||
+    req.headers['x-forwarded-proto'] === 'https' ||
+    SESSION_SECURE_COOKIE;
+
+  res.cookie(SESSION_COOKIE, cookiePayload, {
+    maxAge: SESSION_LIFETIME * 60 * 1000,
+    httpOnly: false,
+    secure: isSecureReq,
+    sameSite: isSecureReq ? 'none' : 'lax',
+    path: '/',
+  });
+}
+
+// Secure Helper to get authenticated user from session cookie or x-yd-session fallback header
 function getAuthUser(req: express.Request): User | null {
-  const rawCookie = req.cookies && (req.cookies[SESSION_COOKIE] || req.cookies['yellow_duck_session_v5']);
+  const rawCookie =
+    (req.cookies && (req.cookies[SESSION_COOKIE] || req.cookies['yellow_duck_session_v5'])) ||
+    req.headers['x-yd-session'];
+
   if (rawCookie) {
     try {
+      const rawStr = Array.isArray(rawCookie) ? rawCookie[0] : String(rawCookie);
       let targetId: number | null = null;
-      if (typeof rawCookie === 'string' && rawCookie.trim().startsWith('{')) {
-        const parsed = JSON.parse(rawCookie);
+      if (rawStr.trim().startsWith('{')) {
+        const parsed = JSON.parse(rawStr);
         targetId = Number(parsed.userId);
       } else {
-        targetId = parseInt(rawCookie, 10);
+        targetId = parseInt(rawStr, 10);
       }
       if (targetId && !isNaN(targetId)) {
         const found = users.find((u) => u.id === targetId);
@@ -1301,14 +1515,7 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   // Set session cookie using configured SESSION_COOKIE and lifetime
-  const cookiePayload = JSON.stringify({ userId: user.id, username: user.username, role: user.role });
-  res.cookie(SESSION_COOKIE, cookiePayload, {
-    maxAge: SESSION_LIFETIME * 60 * 1000,
-    httpOnly: false,
-    secure: SESSION_SECURE_COOKIE,
-    sameSite: 'lax',
-    path: '/',
-  });
+  setSessionCookie(req, res, user);
 
   res.json({
     message: 'تم تسجيل الدخول بنجاح',
@@ -1348,9 +1555,15 @@ app.post('/api/auth/google', (req, res) => {
       username = `${baseUsername}${counter++}`;
     }
 
-    const nameParts = (displayName || '').trim().split(' ');
-    const firstname = nameParts[0] || 'مستخدم';
-    const lastname = nameParts.slice(1).join(' ') || 'جوجل';
+    const cleanDisplay = (displayName || '').trim();
+    const isGenericName =
+      !cleanDisplay ||
+      cleanDisplay.includes('المستخدم') ||
+      cleanDisplay.includes('مستخدم') ||
+      cleanDisplay.includes('المتصل');
+    const nameParts = isGenericName ? [username] : cleanDisplay.split(' ');
+    const firstname = nameParts[0] || username;
+    const lastname = nameParts.slice(1).join(' ') || '';
 
     const newId = users.length > 0 ? Math.max(...users.map((u) => u.id)) + 1 : 1;
     user = {
@@ -1388,6 +1601,15 @@ app.post('/api/auth/google', (req, res) => {
     systemLog('info', `New Google user registered: ${user.username} (${user.email}) with $5.00 balance`);
   } else {
     user.isGoogleAuth = true;
+    if (
+      user.firstname === 'المستخدم' ||
+      user.firstname === 'مستخدم' ||
+      user.lastname === 'المتصل' ||
+      user.lastname === 'جوجل'
+    ) {
+      user.firstname = user.username;
+      user.lastname = '';
+    }
     if (photoUrl && (!user.avatar || user.avatar.includes('placeholder'))) {
       user.avatar = photoUrl;
     }
@@ -1399,14 +1621,7 @@ app.post('/api/auth/google', (req, res) => {
   }
 
   // Set session cookie using configured SESSION_COOKIE and lifetime
-  const cookiePayload = JSON.stringify({ userId: user.id, username: user.username, role: user.role });
-  res.cookie(SESSION_COOKIE, cookiePayload, {
-    maxAge: SESSION_LIFETIME * 60 * 1000,
-    httpOnly: false,
-    secure: SESSION_SECURE_COOKIE,
-    sameSite: 'lax',
-    path: '/',
-  });
+  setSessionCookie(req, res, user);
 
   return res.json({
     message: 'تم تسجيل الدخول بحساب Google بنجاح',
@@ -1595,7 +1810,8 @@ app.post('/api/admin/provider/sync-services', async (req, res) => {
       const provServiceId = Number(raw.service);
       const originalRate = parseFloat(raw.rate) || 0.5;
       const calculatedRate = parseFloat((originalRate * marginMultiplier).toFixed(4));
-      const catId = mapCategory(raw.category || 'عام');
+      const cleanCat = cleanCategoryText(raw.category || 'خدمات عامة');
+      const catId = matchPlatformFromText(cleanCat);
 
       const existing = services.find(
         (s) => s.providerServiceId === provServiceId || (s.name === raw.name && s.provider === 'SMMFansFaster')
@@ -1608,19 +1824,22 @@ app.post('/api/admin/provider/sync-services', async (req, res) => {
         existing.max = parseInt(raw.max, 10) || existing.max;
         existing.providerServiceId = provServiceId;
         existing.provider = 'SMMFansFaster';
+        existing.categoryId = catId;
+        existing.categoryName = cleanCat;
         updatedCount++;
       } else {
         const nextId = services.length > 0 ? Math.max(...services.map((s) => s.id)) + 1 : 101;
         services.push({
           id: nextId,
           categoryId: catId,
+          categoryName: cleanCat,
           name: raw.name,
           type: raw.type || 'Default',
           rate: calculatedRate,
           originalRate,
           min: parseInt(raw.min, 10) || 100,
           max: parseInt(raw.max, 10) || 10000,
-          description: `خدمة أوتوماتيكية عبر مزود SMMFansFaster (${raw.category || ''}). ضمان الجودة والبدء الفوري.`,
+          description: `خدمة أوتوماتيكية عبر مزود SMMFansFaster (${cleanCat}). ضمان الجودة والبدء الفوري.`,
           status: 'active',
           provider: 'SMMFansFaster',
           providerServiceId: provServiceId,
@@ -1629,6 +1848,7 @@ app.post('/api/admin/provider/sync-services', async (req, res) => {
       }
     }
 
+    services.sort((a, b) => a.rate - b.rate);
     saveDatabase();
 
     return res.json({
@@ -1704,8 +1924,9 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(422).json({ error: 'البريد الإلكتروني مسجل بالفعل' });
   }
 
+  const nextId = users.length > 0 ? Math.max(...users.map((u) => u.id)) + 1 : 1;
   const newUser: User = {
-    id: users.length + 1,
+    id: nextId,
     username: username.trim(),
     firstname: firstname.trim(),
     lastname: (lastname || '').trim(),
@@ -1720,6 +1941,7 @@ app.post('/api/auth/register', (req, res) => {
 
   users.push(newUser);
   saveDatabase();
+  setSessionCookie(req, res, newUser);
 
   res.json({
     message: 'تم إنشاء الحساب بنجاح! تم إضافة رصيد ترحيبي $5.00',
@@ -1752,17 +1974,34 @@ app.get('/api/services', (req, res) => {
 
   if (search) {
     const q = String(search).toLowerCase();
-    list = list.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+    list = list.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        (s.categoryName && s.categoryName.toLowerCase().includes(q)) ||
+        String(s.id).includes(q)
+    );
   }
 
-  const enriched = list.map((s) => {
-    const cat = categories.find((c) => c.id === s.categoryId);
-    return {
-      ...s,
-      categoryName: cat?.name || '',
-      rateEgp: parseFloat((s.rate * exchangeRate).toFixed(2)),
-    };
-  });
+  const enriched = list
+    .map((s) => {
+      const cat = categories.find((c) => c.id === s.categoryId);
+      const rawSubcat = cleanCategoryText(s.categoryName || cat?.name || 'خدمات عامة');
+      const isArabicCategory = /[\u0600-\u06FF]/.test(rawSubcat);
+      const subcategoryDisplay = isArabicCategory
+        ? rawSubcat
+        : `${getSmartArabicPrefix(rawSubcat, s.categoryId)} | ${rawSubcat}`;
+
+      return {
+        ...s,
+        categoryName: rawSubcat,
+        subcategoryDisplay,
+        isArabicCategory,
+        platformName: cat?.name || 'خدمات عامة',
+        rateEgp: parseFloat((s.rate * exchangeRate).toFixed(2)),
+      };
+    })
+    .sort((a, b) => a.rate - b.rate);
 
   res.json(enriched);
 });

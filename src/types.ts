@@ -27,6 +27,9 @@ export interface Service {
   id: number;
   categoryId: number;
   categoryName?: string;
+  subcategoryDisplay?: string;
+  isArabicCategory?: boolean;
+  platformName?: string;
   name: string;
   type: string;
   rate: number;

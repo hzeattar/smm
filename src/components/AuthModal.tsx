@@ -29,8 +29,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Direct Google Fallback state when domain is not yet whitelisted in Firebase Console
+  // Direct Google Fallback state when popup is blocked, closed, or domain is not whitelisted
   const [showGoogleFallback, setShowGoogleFallback] = useState(false);
+  const [isDomainUnauthorized, setIsDomainUnauthorized] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
   const [googleDisplayName, setGoogleDisplayName] = useState('');
   const [showFirebaseDomainGuide, setShowFirebaseDomainGuide] = useState(false);
@@ -60,23 +61,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const errCode = String(err.code || '');
       const errMsg = String(err.message || '');
 
-      if (
-        errCode === 'auth/unauthorized-domain' ||
-        errMsg.includes('unauthorized-domain') ||
-        errCode === 'auth/operation-not-supported-in-this-environment' ||
-        errCode === 'auth/configuration-not-found'
-      ) {
-        // Activate immediate Direct Google Sign-In Fallback & show helpful domain helper
+      if (errCode === 'auth/unauthorized-domain' || errMsg.includes('unauthorized-domain')) {
+        setIsDomainUnauthorized(true);
         setShowGoogleFallback(true);
         setError(null);
-      } else if (errCode === 'auth/popup-closed-by-user' || errMsg.includes('popup-closed')) {
-        setError('تم إغلاق نافذة تسجيل الدخول من Google قبل اكتمال العملية.');
       } else if (errCode === 'auth/cancelled-popup-request') {
-        // user clicked again or cancelled
-      } else if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked')) {
+        // user clicked again, ignore
+      } else if (errCode === 'auth/popup-closed-by-user' || errMsg.includes('popup-closed')) {
+        setIsDomainUnauthorized(false);
         setShowGoogleFallback(true);
-        setError('تم حظر النافذة المنبثقة في المتصفح؛ يمكنك المتابعة فوراً عبر نموذج الدخول السريع بحساب Google أدناه.');
+        setError('تم إغلاق النافذة المنبثقة؛ يمكنك إتمام الدخول فوراً بإدخال بريد Gmail أدناه.');
+      } else if (errCode === 'auth/popup-blocked' || errMsg.includes('popup-blocked')) {
+        setIsDomainUnauthorized(false);
+        setShowGoogleFallback(true);
+        setError('تم حظر النافذة المنبثقة في المتصفح؛ يمكنك المتابعة فوراً عبر الدخول السريع أدناه.');
       } else {
+        setIsDomainUnauthorized(false);
         setShowGoogleFallback(true);
         setError('يمكنك المتابعة مباشرة بإدخال بريد Gmail الخاص بك أدناه لتسجيل الدخول الفوري.');
       }
@@ -227,42 +227,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Google One-Click Sign In or Direct Fallback */}
         <div className="mb-5 space-y-3">
           {!showGoogleFallback ? (
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading || loading}
-              className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2.5 border border-slate-200 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
-            >
-              {googleLoading ? (
-                <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                  />
-                </svg>
-              )}
-              <span>
-                {googleLoading
-                  ? 'جاري الاتصال بحساب Google...'
-                  : mode === 'login'
-                  ? 'الدخول المباشر بحساب Google / Gmail'
-                  : 'التسجيل الفوري بحساب Google / Gmail'}
-              </span>
-            </button>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading || loading}
+                className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2.5 border border-slate-200 active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+              >
+                {googleLoading ? (
+                  <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                    />
+                  </svg>
+                )}
+                <span>
+                  {googleLoading
+                    ? 'جاري الاتصال بحساب Google...'
+                    : mode === 'login'
+                    ? 'الدخول المباشر بحساب Google / Gmail'
+                    : 'التسجيل الفوري بحساب Google / Gmail'}
+                </span>
+              </button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDomainUnauthorized(false);
+                    setShowGoogleFallback(true);
+                    setError(null);
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-[#f6b100] transition-colors cursor-pointer"
+                >
+                  أو الدخول السريع ببريد Gmail مباشرة بدون نافذة منبثقة
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="p-4 rounded-2xl bg-[#0f1117] border border-[#f6b100]/40 space-y-3">
               <div className="flex items-center justify-between">
@@ -309,40 +324,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </button>
               </form>
 
-              {/* Firebase Authorized Domain Helper for Admin */}
-              <div className="pt-2 border-t border-[#272c3d]">
-                <button
-                  type="button"
-                  onClick={() => setShowFirebaseDomainGuide(!showFirebaseDomainGuide)}
-                  className="flex items-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
-                >
-                  <Info className="w-3.5 h-3.5" />
-                  <span>كيف أفعل نافذة Google المنبثقة على هذا الدومين؟</span>
-                </button>
+              {/* Firebase Authorized Domain Helper (only shown when domain is unauthorized) */}
+              {isDomainUnauthorized && (
+                <div className="pt-2 border-t border-[#272c3d]">
+                  <button
+                    type="button"
+                    onClick={() => setShowFirebaseDomainGuide(!showFirebaseDomainGuide)}
+                    className="flex items-center gap-1.5 text-[11px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    <span>كيف أفعل نافذة Google المنبثقة على هذا الدومين؟</span>
+                  </button>
 
-                {showFirebaseDomainGuide && (
-                  <div className="mt-2 p-2.5 rounded-xl bg-[#181b26] border border-[#272c3d] text-[11px] text-slate-300 space-y-2 leading-relaxed">
-                    <p>
-                      لتفعيل النافذة المنبثقة المباشرة من Firebase على دومين Railway، افتح{' '}
-                      <strong className="text-white">Firebase Console</strong> ثم انتقل إلى:
-                      <span className="block font-mono text-[10px] text-[#f6b100] mt-0.5">
-                        Authentication &rarr; Settings &rarr; Authorized domains &rarr; Add domain
-                      </span>
-                    </p>
-                    <div className="flex items-center justify-between gap-2 bg-[#0f1117] px-2.5 py-1.5 rounded-lg border border-[#272c3d]">
-                      <code className="font-mono text-[11px] text-emerald-400 truncate">{currentDomain}</code>
-                      <button
-                        type="button"
-                        onClick={handleCopyDomain}
-                        className="px-2 py-1 rounded bg-[#222634] hover:bg-[#2c3244] text-white text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
-                      >
-                        {copiedDomain ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedDomain ? 'تم النسخ' : 'نسخ الدومين'}</span>
-                      </button>
+                  {showFirebaseDomainGuide && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-[#181b26] border border-[#272c3d] text-[11px] text-slate-300 space-y-2 leading-relaxed">
+                      <p>
+                        لتفعيل النافذة المنبثقة المباشرة من Firebase على دومين Railway، افتح{' '}
+                        <strong className="text-white">Firebase Console</strong> ثم انتقل إلى:
+                        <span className="block font-mono text-[10px] text-[#f6b100] mt-0.5">
+                          Authentication &rarr; Settings &rarr; Authorized domains &rarr; Add domain
+                        </span>
+                      </p>
+                      <div className="flex items-center justify-between gap-2 bg-[#0f1117] px-2.5 py-1.5 rounded-lg border border-[#272c3d]">
+                        <code className="font-mono text-[11px] text-emerald-400 truncate">{currentDomain}</code>
+                        <button
+                          type="button"
+                          onClick={handleCopyDomain}
+                          className="px-2 py-1 rounded bg-[#222634] hover:bg-[#2c3244] text-white text-[10px] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          {copiedDomain ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedDomain ? 'تم النسخ' : 'نسخ الدومين'}</span>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

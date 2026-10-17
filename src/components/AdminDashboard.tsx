@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, Order, Transaction, Service, Category, PlatformStats, Ticket, ProviderInfo } from '../types';
 import {
   ShieldAlert,
@@ -8,9 +8,7 @@ import {
   Layers,
   CheckCircle,
   XCircle,
-  Clock,
   PlusCircle,
-  ArrowUpRight,
   TrendingUp,
   Settings,
   RefreshCw,
@@ -49,7 +47,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefresh,
   onNavigate,
 }) => {
-  const [activeTab, setActiveTab] = useState<'orders' | 'deposits' | 'tickets' | 'users' | 'services' | 'settings' | 'provider'>('orders');
+  const [activeTab, setActiveTab] = useState<
+    'orders' | 'deposits' | 'tickets' | 'users' | 'services' | 'settings' | 'provider'
+  >('orders');
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -121,6 +121,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Service filters & pagination
   const [serviceSearchQuery, setServiceSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | 'all'>('all');
+  const [selectedSubcategoryFilter, setSelectedSubcategoryFilter] = useState<string>('all');
   const [adminServicesPage, setAdminServicesPage] = useState<number>(1);
   const ADMIN_SERVICES_PER_PAGE = 50;
 
@@ -161,9 +162,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setStats(statsData);
       setOrders(ordData.orders || []);
       setTransactions(txData.transactions || []);
-      setUsersList(usrData || []);
-      setServicesList(srvData || []);
-      setCategories(catData || []);
+      setUsersList(Array.isArray(usrData) ? usrData : []);
+      setServicesList(Array.isArray(srvData) ? srvData : []);
+      setCategories(Array.isArray(catData) ? catData : []);
       setTickets(tickData.tickets || []);
       if (Array.isArray(pmData)) setPaymentMethodsList(pmData);
     } catch (err) {
@@ -263,9 +264,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // Reject deposit
+  // Reject deposit (without browser prompt so it works smoothly on mobile and in iframes)
   const handleRejectDeposit = async (txId: number) => {
-    const reason = prompt('سبب رفض الإيداع:') || 'بيانات التحويل غير مطابقة';
+    const reason = 'بيانات التحويل غير مطابقة';
     setActionSuccess(null);
     setActionError(null);
     try {
@@ -409,10 +410,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setActionSuccess(null);
     setActionError(null);
     const nextStatus = userToUpdate.status === 'banned' ? 'active' : 'banned';
-    const confirmMsg = nextStatus === 'banned'
-      ? `هل أنت متأكد من حظر حساب المستخدم (${userToUpdate.username}) ومنعه من الدخول للمنصة؟`
-      : `هل أنت متأكد من إلغاء الحظر وتفعيل حساب المستخدم (${userToUpdate.username})؟`;
-    if (!window.confirm(confirmMsg)) return;
 
     try {
       const res = await fetch(`/api/admin/users/${userToUpdate.id}/status`, {
@@ -475,7 +472,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteService = async (serviceId: number, serviceName: string) => {
     setActionSuccess(null);
     setActionError(null);
-    if (!window.confirm(`هل أنت متأكد من حذف الخدمة (${serviceName}) نهائياً من المنصة؟`)) return;
 
     try {
       const res = await fetch(`/api/admin/services/${serviceId}`, {
@@ -483,7 +479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setActionSuccess(data.message);
+      setActionSuccess(data.message || `تم حذف الخدمة (${serviceName})`);
       fetchAdminData();
     } catch (err: any) {
       setActionError(err.message || 'فشل حذف الخدمة');
@@ -564,7 +560,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const data = await res.json();
       setTestResult(data);
       if (res.ok) {
-        setActionSuccess(`تم فحص الاتصال بالمزود بنجاح! سرعة الاستجابة: ${data.latencyMs}ms | الرصيد: $${data.balance}`);
+        setActionSuccess(
+          `تم فحص الاتصال بالمزود بنجاح! سرعة الاستجابة: ${data.latencyMs}ms | الرصيد: $${data.balance}`
+        );
         fetchProviderInfo();
       } else {
         setActionError(`فشل فحص الاتصال بالمزود: ${data.error}`);
@@ -657,36 +655,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Subcategories for Admin Services filter
+  const adminAvailableSubcategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        servicesList
+          .filter((s) => selectedCategoryFilter === 'all' || s.categoryId === selectedCategoryFilter)
+          .map((s) => s.categoryName || 'عام')
+      )
+    );
+  }, [servicesList, selectedCategoryFilter]);
+
   return (
-    <div className="min-h-screen bg-[#0f1117] py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-8">
+    <div className="min-h-screen bg-[#0f1117] pt-3 sm:pt-4 pb-28 md:py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 space-y-5 sm:space-y-7">
         {/* Admin Banner */}
-        <div className="rounded-3xl bg-gradient-to-r from-amber-950/40 via-[#181b26] to-[#181b26] border border-amber-500/30 p-6 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="rounded-3xl bg-gradient-to-r from-amber-950/40 via-[#181b26] to-[#181b26] border border-amber-500/30 p-4 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
-              <ShieldAlert className="w-4 h-4" />
-              <span>لوحة الإدارة المركزية - البطة الصفرا</span>
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>لوحة الإدارة المركزية (@{admin.username})</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white">متابعة تشغيل المنصة</h1>
+            <h1 className="text-xl sm:text-3xl font-black text-white">متابعة تشغيل المنصة</h1>
             <p className="text-xs text-slate-400 mt-1">
               إدارة طلبات العملاء، اعتماد التحويلات اليدوية، والتحكم في أسعار الخدمات وسعر الصرف.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
             <button
               onClick={() => {
                 fetchAdminData();
                 onRefresh();
               }}
-              className="p-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors"
+              className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer"
               title="تحديث البيانات"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={() => onNavigate('dashboard')}
-              className="px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-amber-300 text-xs font-bold transition-colors"
+              className="flex-1 sm:flex-initial min-h-[44px] px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-amber-300 text-xs font-bold transition-colors cursor-pointer text-center"
             >
               الذهاب إلى واجهة العميل
             </button>
@@ -695,91 +704,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Global Action Alerts */}
         {actionSuccess && (
-          <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" />
+              <CheckCircle className="w-4 h-4 shrink-0" />
               <span>{actionSuccess}</span>
             </div>
-            <button onClick={() => setActionSuccess(null)} className="text-xs hover:underline">
+            <button onClick={() => setActionSuccess(null)} className="text-xs hover:underline shrink-0">
               إغلاق
             </button>
           </div>
         )}
 
         {actionError && (
-          <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <XCircle className="w-4 h-4" />
+              <XCircle className="w-4 h-4 shrink-0" />
               <span>{actionError}</span>
             </div>
-            <button onClick={() => setActionError(null)} className="text-xs hover:underline">
+            <button onClick={() => setActionError(null)} className="text-xs hover:underline shrink-0">
               إغلاق
             </button>
           </div>
         )}
 
         {/* Admin KPI Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs">إجمالي الإيرادات</span>
+              <span className="text-[11px] sm:text-xs">إجمالي الإيرادات</span>
               <DollarSign className="w-4 h-4 text-[#f6b100]" />
             </div>
-            <div className="text-xl font-black text-white">
+            <div className="text-base sm:text-xl font-black text-white tabular-nums">
               {stats?.totalEarningsEgp.toLocaleString() || 0} ج.م
             </div>
-            <span className="text-[11px] text-slate-400">${stats?.totalEarningsUsd || 0} USD</span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs">المستخدمون النشطون</span>
-              <Users className="w-4 h-4 text-blue-400" />
-            </div>
-            <div className="text-xl font-black text-white">{stats?.activeUsers || 0}</div>
-            <span className="text-[11px] text-emerald-400">حسابات مفعلة</span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs">كل الطلبات</span>
-              <ShoppingBag className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="text-xl font-black text-white">{stats?.totalOrders || 0}</div>
-            <span className="text-[11px] text-slate-400">
-              {stats?.completedOrders || 0} مكتمل | {stats?.pendingOrders || 0} قيد الانتظار
+            <span className="text-[10px] sm:text-[11px] text-slate-400 tabular-nums">
+              ${stats?.totalEarningsUsd || 0} USD
             </span>
           </div>
 
-          <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs">الخدمات النشطة</span>
+              <span className="text-[11px] sm:text-xs">المستخدمون النشطون</span>
+              <Users className="w-4 h-4 text-blue-400" />
+            </div>
+            <div className="text-base sm:text-xl font-black text-white tabular-nums">
+              {stats?.activeUsers || 0}
+            </div>
+            <span className="text-[10px] sm:text-[11px] text-emerald-400">حسابات مفعلة</span>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[11px] sm:text-xs">كل الطلبات</span>
+              <ShoppingBag className="w-4 h-4 text-purple-400" />
+            </div>
+            <div className="text-base sm:text-xl font-black text-white tabular-nums">
+              {stats?.totalOrders || 0}
+            </div>
+            <span className="text-[10px] sm:text-[11px] text-slate-400 tabular-nums">
+              {stats?.completedOrders || 0} مكتمل | {stats?.pendingOrders || 0} انتظار
+            </span>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+            <div className="flex items-center justify-between text-slate-400 mb-2">
+              <span className="text-[11px] sm:text-xs">الخدمات النشطة</span>
               <Layers className="w-4 h-4 text-emerald-400" />
             </div>
-            <div className="text-xl font-black text-white">{stats?.activeServices || 0}</div>
-            <span className="text-[11px] text-slate-400">جاهزة للطلب</span>
+            <div className="text-base sm:text-xl font-black text-white tabular-nums">
+              {stats?.activeServices || 0}
+            </div>
+            <span className="text-[10px] sm:text-[11px] text-slate-400">جاهزة للطلب</span>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-2 border-b border-[#272c3d] pb-2 overflow-x-auto text-xs font-bold">
+        <div className="flex items-center gap-1.5 sm:gap-2 border-b border-[#272c3d] pb-2 overflow-x-auto text-xs font-bold scrollbar-none">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'orders' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <ShoppingBag className="w-4 h-4" />
+            <ShoppingBag className="w-4 h-4 shrink-0" />
             <span>إدارة الطلبات ({orders.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('deposits')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'deposits' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <DollarSign className="w-4 h-4" />
+            <DollarSign className="w-4 h-4 shrink-0" />
             <span>
               اعتماد الإيداعات ({transactions.filter((t) => t.status === 'pending').length} معلق)
             </span>
@@ -787,11 +804,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('tickets')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'tickets' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="w-4 h-4 shrink-0" />
             <span>
               تذاكر الدعم ({tickets.filter((t) => t.status === 'open').length} مفتوحة)
             </span>
@@ -799,21 +816,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <button
             onClick={() => setActiveTab('users')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'users' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-4 h-4 shrink-0" />
             <span>المستخدمون ({usersList.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('services')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'services' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-4 h-4 shrink-0" />
             <span>إدارة الخدمات ({servicesList.length})</span>
           </button>
 
@@ -822,28 +839,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               setActiveTab('provider');
               fetchProviderInfo();
             }}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
-              activeTab === 'provider' ? 'bg-[#f6b100] text-black shadow-md shadow-[#f6b100]/20' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
+              activeTab === 'provider'
+                ? 'bg-[#f6b100] text-black shadow-md shadow-[#f6b100]/20'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Zap className="w-4 h-4 text-amber-500" />
-            <span>مزود SMMFansFaster (الربط المباشر)</span>
+            <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>مزود SMMFansFaster</span>
           </button>
 
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 ${
+            className={`px-3.5 py-2.5 min-h-[42px] rounded-xl transition-colors whitespace-nowrap flex items-center gap-2 cursor-pointer ${
               activeTab === 'settings' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Settings className="w-4 h-4" />
-            <span>سعر الصرف والنسخ الاحتياطي</span>
+            <Settings className="w-4 h-4 shrink-0" />
+            <span>سعر الصرف والمحافظ</span>
           </button>
         </div>
 
-        {/* TAB 1: ORDERS MANAGEMENT */}
+        {/* TAB 1: ORDERS MANAGEMENT (Mobile Cards + Desktop Table) */}
         {activeTab === 'orders' && (
-          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-lg font-black text-white mb-1">إدارة كل الطلبات</h2>
@@ -854,14 +873,118 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 onClick={handleSyncProviderOrders}
                 disabled={providerSyncingOrders}
-                className="px-4 py-2 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                className="w-full sm:w-auto justify-center min-h-[42px] px-4 py-2 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${providerSyncingOrders ? 'animate-spin' : ''}`} />
                 <span>{providerSyncingOrders ? 'جاري المزامنة...' : 'مزامنة حالات المزود'}</span>
               </button>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Cards View (< md) */}
+            <div className="md:hidden space-y-3">
+              {orders.map((o) => (
+                <div key={o.id} className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-black text-white text-sm">#{o.id}</span>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                        o.status === 'completed'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : o.status === 'processing'
+                          ? 'bg-blue-500/15 text-blue-400'
+                          : o.status === 'cancelled'
+                          ? 'bg-rose-500/15 text-rose-400'
+                          : 'bg-amber-500/15 text-amber-300'
+                      }`}
+                    >
+                      {o.status === 'completed'
+                        ? 'مكتمل'
+                        : o.status === 'processing'
+                        ? 'قيد التنفيذ'
+                        : o.status === 'cancelled'
+                        ? 'ملغي'
+                        : 'قيد الانتظار'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-bold text-white leading-snug">{o.serviceName}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">{o.categoryName}</div>
+                  </div>
+
+                  <a
+                    href={o.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-amber-400 hover:underline flex items-center gap-1 break-all"
+                  >
+                    <span className="line-clamp-1">{o.link}</span>
+                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                  </a>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#272c3d]/60 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block">الكمية</span>
+                      <strong className="text-white tabular-nums">{o.quantity.toLocaleString()}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">التكلفة</span>
+                      <strong className="text-[#f6b100] tabular-nums">
+                        {(o.charge * exchangeRate).toFixed(2)} ج.م
+                      </strong>
+                    </div>
+                    <div className="text-left">
+                      <span className="text-slate-400 block">المزود</span>
+                      {o.providerOrderId ? (
+                        <span className="text-amber-300 font-mono">#{o.providerOrderId}</span>
+                      ) : (
+                        <span className="text-slate-500">محلي</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#272c3d]/60">
+                    {o.status === 'pending' && (
+                      <button
+                        onClick={() => handleResendOrder(o.id)}
+                        disabled={resendingOrderId === o.id}
+                        className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>{resendingOrderId === o.id ? 'إرسال...' : 'إرسال للمزود'}</span>
+                      </button>
+                    )}
+                    {o.status !== 'completed' && (
+                      <button
+                        onClick={() => handleUpdateOrderStatus(o.id, 'completed')}
+                        className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-black font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        إكمال
+                      </button>
+                    )}
+                    {o.status !== 'processing' && o.status !== 'completed' && (
+                      <button
+                        onClick={() => handleUpdateOrderStatus(o.id, 'processing')}
+                        className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-blue-500/20 hover:bg-blue-500 text-blue-400 hover:text-black font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        تنفيذ
+                      </button>
+                    )}
+                    {o.status !== 'cancelled' && (
+                      <button
+                        onClick={() => handleUpdateOrderStatus(o.id, 'cancelled')}
+                        className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View (>= md) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
                   <tr>
@@ -878,7 +1001,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody className="divide-y divide-[#272c3d]/50">
                   {orders.map((o) => (
                     <tr key={o.id} className="hover:bg-[#222634]/40 transition-colors">
-                      <td className="p-3.5 font-black text-white">#{o.id}</td>
+                      <td className="p-3.5 font-black text-white tabular-nums">#{o.id}</td>
                       <td className="p-3.5 max-w-xs text-slate-200">
                         <div className="font-semibold">{o.serviceName}</div>
                         <div className="text-[10px] text-slate-500">{o.categoryName}</div>
@@ -894,8 +1017,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <ExternalLink className="w-3 h-3 shrink-0" />
                         </a>
                       </td>
-                      <td className="p-3.5 font-bold text-white">{o.quantity.toLocaleString()}</td>
-                      <td className="p-3.5 font-bold text-[#f6b100]">
+                      <td className="p-3.5 font-bold text-white tabular-nums">{o.quantity.toLocaleString()}</td>
+                      <td className="p-3.5 font-bold text-[#f6b100] tabular-nums">
                         {(o.charge * exchangeRate).toFixed(2)} ج.م
                         <span className="block text-[10px] text-slate-500">${o.charge.toFixed(2)}</span>
                       </td>
@@ -910,7 +1033,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         ) : (
                           <span className="text-[11px] text-slate-500">يدوي / محلي</span>
                         )}
-                        {o.notes && <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{o.notes}</div>}
+                        {o.notes && (
+                          <div className="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">{o.notes}</div>
+                        )}
                       </td>
                       <td className="p-3.5">
                         <span
@@ -939,7 +1064,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               onClick={() => handleResendOrder(o.id)}
                               disabled={resendingOrderId === o.id}
-                              className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-[10px] transition-colors flex items-center gap-1"
+                              className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-[10px] transition-colors flex items-center gap-1 cursor-pointer"
                               title="إرسال الطلب لمزود SMMFansFaster"
                             >
                               <Zap className="w-3 h-3" />
@@ -949,7 +1074,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {o.status !== 'completed' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(o.id, 'completed')}
-                              className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-black font-bold text-[10px] transition-colors"
+                              className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-black font-bold text-[10px] transition-colors cursor-pointer"
                               title="إكمال الطلب"
                             >
                               إكمال
@@ -958,7 +1083,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {o.status !== 'processing' && o.status !== 'completed' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(o.id, 'processing')}
-                              className="px-2 py-1 rounded bg-blue-500/20 hover:bg-blue-500 text-blue-400 hover:text-black font-bold text-[10px] transition-colors"
+                              className="px-2 py-1 rounded bg-blue-500/20 hover:bg-blue-500 text-blue-400 hover:text-black font-bold text-[10px] transition-colors cursor-pointer"
                               title="بدء التنفيذ"
                             >
                               تنفيذ
@@ -967,7 +1092,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {o.status !== 'cancelled' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(o.id, 'cancelled')}
-                              className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-[10px] transition-colors"
+                              className="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-[10px] transition-colors cursor-pointer"
                               title="إلغاء واسترجاع الرصيد"
                             >
                               إلغاء
@@ -983,15 +1108,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 2: DEPOSITS APPROVAL */}
+        {/* TAB 2: DEPOSITS APPROVAL (Mobile Cards + Desktop Table) */}
         {activeTab === 'deposits' && (
-          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-            <h2 className="text-lg font-black text-white mb-1">اعتماد شحنات وإيداعات فودافون كاش وإنستاباي</h2>
+          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl">
+            <h2 className="text-lg font-black text-white mb-1">
+              اعتماد شحنات وإيداعات فودافون كاش وإنستاباي
+            </h2>
             <p className="text-xs text-slate-400 mb-6">
               مراجعة تحويلات العملاء واعتمادها لإضافة الرصيد بالدولار إلى محافظهم فوراً
             </p>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Cards View (< md) */}
+            <div className="md:hidden space-y-3">
+              {transactions.map((t) => (
+                <div key={t.id} className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-white">{t.reference}</span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        t.status === 'completed'
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : t.status === 'rejected'
+                          ? 'bg-rose-500/15 text-rose-400'
+                          : 'bg-amber-500/15 text-amber-300'
+                      }`}
+                    >
+                      {t.status === 'completed' ? 'معتمد ✓' : t.status === 'rejected' ? 'مرفوض ✕' : 'معلق ⏳'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-200 font-bold">{t.userName}</span>
+                    <span className="text-amber-300 font-bold">{t.methodName}</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#272c3d]/60 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block">المبلغ</span>
+                      <strong className="text-white tabular-nums">{t.amountEgp.toLocaleString()} ج.م</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">بالدولار</span>
+                      <strong className="text-emerald-400 tabular-nums">${t.amountUsd.toFixed(2)}</strong>
+                    </div>
+                    <div className="text-left">
+                      <span className="text-slate-400 block">رقم المحول</span>
+                      <span className="text-slate-200 font-mono">{t.senderPhone}</span>
+                    </div>
+                  </div>
+
+                  {t.proofData && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewProof(t.proofData!)}
+                      className="w-full py-2 min-h-[40px] rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>عرض صورة إيصال التحويل</span>
+                    </button>
+                  )}
+
+                  {t.status === 'pending' && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => handleApproveDeposit(t.id)}
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>اعتماد وشحن</span>
+                      </button>
+                      <button
+                        onClick={() => handleRejectDeposit(t.id)}
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        <span>رفض</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View (>= md) */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-right text-xs">
                 <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
                   <tr>
@@ -1012,15 +1212,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td className="p-3.5 font-mono text-white font-bold">{t.reference}</td>
                       <td className="p-3.5 text-slate-200">{t.userName}</td>
                       <td className="p-3.5 font-bold text-amber-300">{t.methodName}</td>
-                      <td className="p-3.5 font-black text-white">{t.amountEgp.toLocaleString()} ج.م</td>
-                      <td className="p-3.5 font-black text-emerald-400">${t.amountUsd.toFixed(2)}</td>
-                      <td className="p-3.5 font-bold text-slate-300">{t.senderPhone}</td>
+                      <td className="p-3.5 font-black text-white tabular-nums">
+                        {t.amountEgp.toLocaleString()} ج.م
+                      </td>
+                      <td className="p-3.5 font-black text-emerald-400 tabular-nums">
+                        ${t.amountUsd.toFixed(2)}
+                      </td>
+                      <td className="p-3.5 font-bold text-slate-300 font-mono">{t.senderPhone}</td>
                       <td className="p-3.5">
                         {t.proofData ? (
                           <button
                             type="button"
                             onClick={() => setPreviewProof(t.proofData!)}
-                            className="px-2.5 py-1 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] text-[11px] font-bold flex items-center gap-1 transition-colors"
+                            className="px-2.5 py-1 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>عرض الإيصال</span>
@@ -1051,14 +1255,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleApproveDeposit(t.id)}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs transition-colors flex items-center gap-1 shadow-sm"
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
                             >
                               <CheckCircle className="w-3.5 h-3.5" />
                               <span>اعتماد وشحن</span>
                             </button>
                             <button
                               onClick={() => handleRejectDeposit(t.id)}
-                              className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors flex items-center gap-1"
+                              className="px-3 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <XCircle className="w-3.5 h-3.5" />
                               <span>رفض</span>
@@ -1078,8 +1282,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* TAB: TICKETS MANAGEMENT */}
         {activeTab === 'tickets' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-5 bg-[#181b26] p-6 rounded-3xl border border-[#272c3d] shadow-xl">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+            <div className="lg:col-span-5 bg-[#181b26] p-4 sm:p-6 rounded-3xl border border-[#272c3d] shadow-xl">
               <h2 className="text-base font-black text-white mb-4 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-[#f6b100]" />
                 <span>كل تذاكر الدعم الفني ({tickets.length})</span>
@@ -1100,7 +1304,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-mono text-[11px] text-slate-400">#{t.id} • {t.userName}</span>
+                        <span className="font-mono text-[11px] text-slate-400">
+                          #{t.id} • {t.userName}
+                        </span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             t.status === 'open'
@@ -1124,14 +1330,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
 
-            <div className="lg:col-span-7 bg-[#181b26] p-6 rounded-3xl border border-[#272c3d] shadow-xl">
+            <div className="lg:col-span-7 bg-[#181b26] p-4 sm:p-6 rounded-3xl border border-[#272c3d] shadow-xl">
               {activeAdminTicketId ? (
                 (() => {
                   const current = tickets.find((t) => t.id === activeAdminTicketId);
                   if (!current) return null;
                   return (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between pb-3 border-b border-[#272c3d]">
+                      <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#272c3d] flex-wrap">
                         <div>
                           <div className="text-xs text-slate-400">
                             تذكرة #{current.id} • العميل: {current.userName}
@@ -1142,14 +1348,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {current.status !== 'closed' ? (
                             <button
                               onClick={() => handleUpdateTicketStatus(current.id, 'closed')}
-                              className="px-3 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors"
+                              className="px-3 py-1.5 min-h-[36px] rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
                             >
                               إغلاق التذكرة
                             </button>
                           ) : (
                             <button
                               onClick={() => handleUpdateTicketStatus(current.id, 'open')}
-                              className="px-3 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-xs transition-colors"
+                              className="px-3 py-1.5 min-h-[36px] rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-bold text-xs transition-colors cursor-pointer"
                             >
                               إعادة الفتح
                             </button>
@@ -1193,7 +1399,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => handleAdminTicketReply(current.id)}
-                            className="px-5 py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-bold text-xs flex items-center gap-1.5 transition-colors"
+                            className="px-5 py-2.5 min-h-[42px] rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <Send className="w-3.5 h-3.5" />
                             <span>إرسال رد الإدارة</span>
@@ -1212,9 +1418,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 3: USERS MANAGEMENT */}
+        {/* TAB 3: USERS MANAGEMENT (Mobile Cards + Desktop Table) */}
         {activeTab === 'users' && (
-          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div>
                 <h2 className="text-lg font-black text-white mb-1 flex items-center gap-2">
@@ -1228,25 +1434,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Filters */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="relative min-w-[220px]">
+                <div className="relative flex-1 sm:min-w-[220px]">
                   <input
                     type="text"
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="بحث بالاسم أو اسم المستخدم أو البريد..."
-                    className="w-full pl-3 pr-8 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    placeholder="بحث باسم المستخدم أو البريد..."
+                    className="w-full pl-3 pr-8 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                   />
-                  <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-2.5" />
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-3" />
                 </div>
 
                 <div className="flex items-center gap-1 bg-[#0f1117] p-1 rounded-xl border border-[#272c3d] text-xs">
                   <button
                     type="button"
                     onClick={() => setUserStatusFilter('all')}
-                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
-                      userStatusFilter === 'all'
-                        ? 'bg-[#f6b100] text-black'
-                        : 'text-slate-400 hover:text-white'
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
+                      userStatusFilter === 'all' ? 'bg-[#f6b100] text-black' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     الكل ({usersList.length})
@@ -1254,7 +1458,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button
                     type="button"
                     onClick={() => setUserStatusFilter('active')}
-                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                       userStatusFilter === 'active'
                         ? 'bg-emerald-500 text-black'
                         : 'text-slate-400 hover:text-white'
@@ -1265,7 +1469,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button
                     type="button"
                     onClick={() => setUserStatusFilter('banned')}
-                    className={`px-3 py-1 rounded-lg font-bold transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
                       userStatusFilter === 'banned'
                         ? 'bg-rose-500 text-white'
                         : 'text-slate-400 hover:text-white'
@@ -1290,118 +1494,226 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               });
 
               return (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
-                    <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
-                      <tr>
-                        <th className="p-3.5 font-bold">الاسم</th>
-                        <th className="p-3.5 font-bold">اسم المستخدم</th>
-                        <th className="p-3.5 font-bold">البريد الإلكتروني</th>
-                        <th className="p-3.5 font-bold">الحالة</th>
-                        <th className="p-3.5 font-bold">الرصيد ($)</th>
-                        <th className="p-3.5 font-bold">الرصيد (ج.م)</th>
-                        <th className="p-3.5 font-bold">الطلبات</th>
-                        <th className="p-3.5 font-bold text-center">إجراءات التحكم</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#272c3d]/50">
-                      {filteredUsers.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="p-6 text-center text-slate-500">
-                            لا يوجد مستخدمين يطابقون خيارات البحث المحددة
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-[#222634]/40 transition-colors">
-                      <td className="p-3.5 font-bold text-white flex items-center gap-2">
-                        <img
-                          src={u.avatar?.startsWith('http') || u.avatar?.startsWith('/brand') ? u.avatar : `/images/avatars/${u.avatar || 'duck-happy.jpg'}`}
-                          alt=""
-                          className="w-7 h-7 rounded-lg object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = '/brand/yellow-duck.svg';
-                          }}
-                        />
-                        <span>
-                          {u.firstname} {u.lastname}
-                        </span>
-                        {u.role === 'admin' && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold">
-                            مشرف
+                <>
+                  {/* Mobile Cards (< md) */}
+                  <div className="md:hidden space-y-3">
+                    {filteredUsers.map((u) => (
+                      <div key={u.id} className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <img
+                              src={
+                                u.avatar?.startsWith('http') || u.avatar?.startsWith('/brand')
+                                  ? u.avatar
+                                  : `/images/avatars/${u.avatar || 'duck-happy.jpg'}`
+                              }
+                              alt=""
+                              className="w-9 h-9 rounded-xl object-cover shrink-0"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/brand/yellow-duck.svg';
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <div className="font-bold text-white text-xs truncate flex items-center gap-1.5">
+                                <span>{u.username}</span>
+                                {u.role === 'admin' && (
+                                  <span className="text-[10px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded font-bold">
+                                    مشرف
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-mono truncate">{u.email}</div>
+                            </div>
+                          </div>
+
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                              u.status === 'active'
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-rose-500/15 text-rose-400'
+                            }`}
+                          >
+                            {u.status === 'active' ? 'نشط' : 'محظور'}
                           </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-slate-300 font-mono">@{u.username}</td>
-                      <td className="p-3.5 text-slate-400 font-mono">{u.email}</td>
-                      <td className="p-3.5">
-                        <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                            u.status === 'active'
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : u.status === 'banned'
-                              ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                              : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
-                          }`}
-                        >
-                          {u.status === 'active' ? 'نشط' : u.status === 'banned' ? 'محظور' : 'معطل'}
-                        </span>
-                      </td>
-                      <td className="p-3.5 font-black text-emerald-400 font-mono">${u.balance.toFixed(2)}</td>
-                      <td className="p-3.5 font-bold text-[#f6b100] font-mono">{u.balanceEgp.toLocaleString()} ج.م</td>
-                      <td className="p-3.5 text-white font-bold font-mono">{u.ordersCount || 0}</td>
-                      <td className="p-3.5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Adjust Balance */}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#272c3d]/60 text-[11px]">
+                          <div>
+                            <span className="text-slate-400 block">الرصيد (ج.م)</span>
+                            <strong className="text-[#f6b100] tabular-nums">
+                              {u.balanceEgp.toLocaleString()} ج.م
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block">الرصيد ($)</span>
+                            <strong className="text-emerald-400 tabular-nums">${u.balance.toFixed(2)}</strong>
+                          </div>
+                          <div className="text-left">
+                            <span className="text-slate-400 block">الطلبات</span>
+                            <strong className="text-white tabular-nums">{u.ordersCount || 0}</strong>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-[#272c3d]/60">
                           <button
                             onClick={() => {
                               setAdjustUserId(u.id);
                               setAdjustAmount(10);
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
-                            title="شحن أو خصم رصيد"
+                            className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <DollarSign className="w-3.5 h-3.5" />
                             <span>الرصيد</span>
                           </button>
 
-                          {/* Reset Password */}
                           <button
                             onClick={() => {
                               setResetPasswordUserId(u.id);
                               setNewPasswordInput('');
                             }}
-                            className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
-                            title="تغيير كلمة مرور العميل في حال نسيانها"
+                            className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-sky-400 font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                             <span>كلمة السر</span>
                           </button>
 
-                          {/* Ban / Activate (except self) */}
                           {u.id !== admin.id && (
                             <button
                               onClick={() => handleToggleUserStatus(u)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`min-h-[38px] px-3 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer ${
                                 u.status === 'banned'
-                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
-                                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400'
+                                  ? 'bg-emerald-500/20 text-emerald-400'
+                                  : 'bg-rose-500/20 text-rose-400'
                               }`}
-                              title={u.status === 'banned' ? 'إلغاء حظر الحساب' : 'حظر هذا المستخدم'}
                             >
                               <Ban className="w-3.5 h-3.5" />
+                              <span>{u.status === 'banned' ? 'تفعيل' : 'حظر'}</span>
                             </button>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        );
-      })()}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Table (>= md) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                        <tr>
+                          <th className="p-3.5 font-bold">المستخدم</th>
+                          <th className="p-3.5 font-bold">اسم الحساب</th>
+                          <th className="p-3.5 font-bold">البريد الإلكتروني</th>
+                          <th className="p-3.5 font-bold">الحالة</th>
+                          <th className="p-3.5 font-bold">الرصيد ($)</th>
+                          <th className="p-3.5 font-bold">الرصيد (ج.م)</th>
+                          <th className="p-3.5 font-bold">الطلبات</th>
+                          <th className="p-3.5 font-bold text-center">إجراءات التحكم</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#272c3d]/50">
+                        {filteredUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-6 text-center text-slate-500">
+                              لا يوجد مستخدمين يطابقون خيارات البحث المحددة
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredUsers.map((u) => (
+                            <tr key={u.id} className="hover:bg-[#222634]/40 transition-colors">
+                              <td className="p-3.5 font-bold text-white flex items-center gap-2">
+                                <img
+                                  src={
+                                    u.avatar?.startsWith('http') || u.avatar?.startsWith('/brand')
+                                      ? u.avatar
+                                      : `/images/avatars/${u.avatar || 'duck-happy.jpg'}`
+                                  }
+                                  alt=""
+                                  className="w-7 h-7 rounded-lg object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = '/brand/yellow-duck.svg';
+                                  }}
+                                />
+                                <span>{u.username}</span>
+                                {u.role === 'admin' && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold">
+                                    مشرف
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3.5 text-slate-300 font-mono">@{u.username}</td>
+                              <td className="p-3.5 text-slate-400 font-mono">{u.email}</td>
+                              <td className="p-3.5">
+                                <span
+                                  className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                    u.status === 'active'
+                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                      : u.status === 'banned'
+                                      ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                      : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                                  }`}
+                                >
+                                  {u.status === 'active' ? 'نشط' : u.status === 'banned' ? 'محظور' : 'معطل'}
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-black text-emerald-400 font-mono tabular-nums">
+                                ${u.balance.toFixed(2)}
+                              </td>
+                              <td className="p-3.5 font-bold text-[#f6b100] font-mono tabular-nums">
+                                {u.balanceEgp.toLocaleString()} ج.م
+                              </td>
+                              <td className="p-3.5 text-white font-bold font-mono tabular-nums">
+                                {u.ordersCount || 0}
+                              </td>
+                              <td className="p-3.5">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setAdjustUserId(u.id);
+                                      setAdjustAmount(10);
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="شحن أو خصم رصيد"
+                                  >
+                                    <DollarSign className="w-3.5 h-3.5" />
+                                    <span>الرصيد</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      setResetPasswordUserId(u.id);
+                                      setNewPasswordInput('');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="تغيير كلمة مرور العميل في حال نسيانها"
+                                  >
+                                    <KeyRound className="w-3.5 h-3.5" />
+                                    <span>كلمة السر</span>
+                                  </button>
+
+                                  {u.id !== admin.id && (
+                                    <button
+                                      onClick={() => handleToggleUserStatus(u)}
+                                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        u.status === 'banned'
+                                          ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                                          : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400'
+                                      }`}
+                                      title={u.status === 'banned' ? 'إلغاء حظر الحساب' : 'حظر هذا المستخدم'}
+                                    >
+                                      <Ban className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Adjust balance modal */}
             {adjustUserId && (
@@ -1419,7 +1731,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => setAdjustAction('add')}
-                          className={`py-2 rounded-xl text-xs font-bold ${
+                          className={`py-2.5 rounded-xl text-xs font-bold cursor-pointer ${
                             adjustAction === 'add'
                               ? 'bg-emerald-500 text-black'
                               : 'bg-[#0f1117] text-slate-400 border border-[#272c3d]'
@@ -1430,7 +1742,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => setAdjustAction('deduct')}
-                          className={`py-2 rounded-xl text-xs font-bold ${
+                          className={`py-2.5 rounded-xl text-xs font-bold cursor-pointer ${
                             adjustAction === 'deduct'
                               ? 'bg-rose-500 text-white'
                               : 'bg-[#0f1117] text-slate-400 border border-[#272c3d]'
@@ -1476,14 +1788,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         type="submit"
-                        className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-bold text-xs hover:bg-[#e09f00] transition-colors"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#f6b100] text-black font-bold text-xs hover:bg-[#e09f00] transition-colors cursor-pointer"
                       >
                         حفظ التعديل
                       </button>
                       <button
                         type="button"
                         onClick={() => setAdjustUserId(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
                       >
                         إلغاء
                       </button>
@@ -1514,7 +1826,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const targetU = usersList.find((u) => u.id === resetPasswordUserId);
                     return (
                       <p className="text-xs text-slate-400 mb-4">
-                        تعديل كلمة السر المعتمدة لحساب <strong className="text-white">@{targetU?.username}</strong> ({targetU?.firstname} {targetU?.lastname})
+                        تعديل كلمة السر المعتمدة لحساب <strong className="text-white">@{targetU?.username}</strong>
                       </p>
                     );
                   })()}
@@ -1533,23 +1845,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         placeholder="أدخل كلمة المرور الجديدة للعميل..."
                         className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs font-semibold focus:outline-none focus:border-[#f6b100]"
                       />
-                      <small className="text-slate-500 text-[11px] block mt-1">
-                        سيتمكن العميل فور حفظها من الدخول بكلمة المرور هذه مباشرة.
-                      </small>
                     </div>
 
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         type="submit"
                         disabled={resetPasswordLoading || newPasswordInput.trim().length < 4}
-                        className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-bold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#f6b100] text-black font-bold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
                       >
-                        {resetPasswordLoading ? 'جاري الحفظ...' : 'تأكيد وحفظ كلمة المرور'}
+                        {resetPasswordLoading ? 'جاري الحفظ...' : 'تأكيد وحفظ'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setResetPasswordUserId(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
                       >
                         إلغاء
                       </button>
@@ -1561,39 +1870,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 4: SERVICES MANAGEMENT */}
+        {/* TAB 4: SERVICES MANAGEMENT (Mobile Cards + Desktop Table) */}
         {activeTab === 'services' && (
           <div className="space-y-6">
             {/* Top Toolbar */}
-            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-lg font-black text-white mb-1 flex items-center gap-2">
                   <Layers className="w-5 h-5 text-[#f6b100]" />
-                  <span>التحكم بالخدمات والأسعار (Services Control)</span>
+                  <span>التحكم بالخدمات والأقسام (Services Control)</span>
                 </h2>
                 <p className="text-xs text-slate-400">
-                  إدارة شاملة لجميع الخدمات: تعديل الأسعار، تغيير الحدود، التفعيل والتعطيل، الحذف، والمزامنة الحية
+                  إدارة شاملة لجميع الخدمات المرتبة تصاعدياً حسب السعر: تعديل، تفعيل/تعطيل، حذف، ومزامنة حية
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleSyncProviderServices}
-                  disabled={providerSyncingServices}
-                  className="px-4 py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors flex items-center gap-2 shadow-lg shadow-[#f6b100]/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <RefreshCw className={`w-4 h-4 ${providerSyncingServices ? 'animate-spin' : ''}`} />
-                  <span>{providerSyncingServices ? 'جاري استيراد كافة الخدمات...' : 'استيراد وتحديث كافة الخدمات من SMMFansFaster'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleSyncProviderServices}
+                disabled={providerSyncingServices}
+                className="w-full md:w-auto justify-center min-h-[44px] px-4 py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors flex items-center gap-2 shadow-lg shadow-[#f6b100]/20 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${providerSyncingServices ? 'animate-spin' : ''}`} />
+                <span>
+                  {providerSyncingServices
+                    ? 'جاري استيراد كافة الخدمات...'
+                    : 'استيراد وتحديث كافة الخدمات من SMMFansFaster'}
+                </span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <div className="lg:col-span-8 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-                {/* Search and Category Filter */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-                  <div className="relative flex-1">
+              <div className="lg:col-span-8 bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl">
+                {/* Search, Platform Filter, and Subcategory Filter */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+                  <div className="relative">
                     <input
                       type="text"
                       value={serviceSearchQuery}
@@ -1602,21 +1913,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setAdminServicesPage(1);
                       }}
                       placeholder="بحث باسم الخدمة أو رقمها (ID)..."
-                      className="w-full pl-3 pr-8 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      className="w-full pl-3 pr-8 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     />
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-2.5" />
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute right-2.5 top-3" />
                   </div>
 
-                  <div className="w-full sm:w-48">
+                  <div>
                     <select
                       value={selectedCategoryFilter}
                       onChange={(e) => {
                         setSelectedCategoryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                        setSelectedSubcategoryFilter('all');
                         setAdminServicesPage(1);
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     >
-                      <option value="all">جميع المنصات والأقسام</option>
+                      <option value="all">جميع المنصات (12 منصة)</option>
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -1624,147 +1936,249 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       ))}
                     </select>
                   </div>
+
+                  <div>
+                    <select
+                      value={selectedSubcategoryFilter}
+                      onChange={(e) => {
+                        setSelectedSubcategoryFilter(e.target.value);
+                        setAdminServicesPage(1);
+                      }}
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    >
+                      <option value="all">كل الأقسام الفرعية ({adminAvailableSubcategories.length})</option>
+                      {adminAvailableSubcategories.map((sub) => (
+                        <option key={sub} value={sub}>
+                          {sub}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {(() => {
-                  const filteredServices = servicesList.filter((s) => {
-                    if (selectedCategoryFilter !== 'all' && s.categoryId !== selectedCategoryFilter) return false;
-                    if (!serviceSearchQuery.trim()) return true;
-                    const q = serviceSearchQuery.toLowerCase();
-                    return (
-                      s.name.toLowerCase().includes(q) ||
-                      s.id.toString().includes(q) ||
-                      (s.categoryName && s.categoryName.toLowerCase().includes(q))
-                    );
-                  });
+                  const filteredServices = servicesList
+                    .filter((s) => {
+                      if (selectedCategoryFilter !== 'all' && s.categoryId !== selectedCategoryFilter)
+                        return false;
+                      if (selectedSubcategoryFilter !== 'all' && s.categoryName !== selectedSubcategoryFilter)
+                        return false;
+                      if (!serviceSearchQuery.trim()) return true;
+                      const q = serviceSearchQuery.toLowerCase();
+                      return (
+                        s.name.toLowerCase().includes(q) ||
+                        s.id.toString().includes(q) ||
+                        (s.categoryName && s.categoryName.toLowerCase().includes(q)) ||
+                        (s.subcategoryDisplay && s.subcategoryDisplay.toLowerCase().includes(q))
+                      );
+                    })
+                    .sort((a, b) => a.rate - b.rate);
 
                   const totalPages = Math.ceil(filteredServices.length / ADMIN_SERVICES_PER_PAGE) || 1;
                   const safePage = Math.min(Math.max(1, adminServicesPage), totalPages);
                   const startIndex = (safePage - 1) * ADMIN_SERVICES_PER_PAGE;
-                  const currentServices = filteredServices.slice(startIndex, startIndex + ADMIN_SERVICES_PER_PAGE);
+                  const currentServices = filteredServices.slice(
+                    startIndex,
+                    startIndex + ADMIN_SERVICES_PER_PAGE
+                  );
 
                   return (
-                    <div className="overflow-x-auto">
-                      <div className="text-[11px] text-slate-400 mb-2 font-semibold">
-                        الخدمات المعروضة: {filteredServices.length} من إجمالي {servicesList.length} خدمة (الصفحة {safePage} من {totalPages})
+                    <div>
+                      <div className="text-[11px] text-slate-400 mb-3 font-semibold">
+                        الخدمات المعروضة: {filteredServices.length} من إجمالي {servicesList.length} خدمة (مرتبة
+                        من الأرخص للأغلى — الصفحة {safePage} من {totalPages})
                       </div>
-                      <table className="w-full text-right text-xs">
-                        <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
-                          <tr>
-                            <th className="p-3 font-bold">الرقم</th>
-                            <th className="p-3 font-bold">القسم</th>
-                            <th className="p-3 font-bold">اسم الخدمة</th>
-                            <th className="p-3 font-bold">السعر ($)</th>
-                            <th className="p-3 font-bold">السعر (ج.م)</th>
-                            <th className="p-3 font-bold">الحدود</th>
-                            <th className="p-3 font-bold">الحالة</th>
-                            <th className="p-3 font-bold text-center">إجراءات</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#272c3d]/50">
-                          {currentServices.length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="p-6 text-center text-slate-500">
-                                لا توجد خدمات مطابقة للبحث أو القسم المختار
-                              </td>
-                            </tr>
-                          ) : (
-                            currentServices.map((s) => (
-                              <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
-                                <td className="p-3 font-mono text-slate-400">#{s.id}</td>
-                                <td className="p-3 font-bold text-white whitespace-nowrap">
-                                  {s.categoryName || categories.find((c) => c.id === s.categoryId)?.name || 'عام'}
-                                </td>
-                                <td className="p-3 text-slate-200 max-w-xs">
-                                  <div className="font-semibold line-clamp-2">{s.name}</div>
-                                  {s.provider === 'SMMFansFaster' && (
-                                    <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 bg-amber-500/15 text-amber-300 rounded font-mono">
-                                      SMMFansFaster #{s.providerServiceId || s.id}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="p-3 font-black text-emerald-400 font-mono">${s.rate.toFixed(3)}</td>
-                                <td className="p-3 font-black text-[#f6b100] font-mono whitespace-nowrap">
+
+                      {/* Mobile Cards (< md) */}
+                      <div className="md:hidden space-y-3">
+                        {currentServices.map((s) => (
+                          <div
+                            key={s.id}
+                            className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] space-y-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-xs text-slate-400">#{s.id}</span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  s.status === 'active'
+                                    ? 'bg-emerald-500/15 text-emerald-400'
+                                    : 'bg-slate-500/15 text-slate-400'
+                                }`}
+                              >
+                                {s.status === 'active' ? 'نشط' : 'معطل'}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] font-bold text-[#f6b100] truncate">
+                              {s.subcategoryDisplay || s.categoryName}
+                            </div>
+                            <div className="text-xs font-semibold text-white leading-snug">{s.name}</div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-[#272c3d]/60 text-xs">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">السعر</span>
+                                <strong className="text-[#f6b100] tabular-nums">
                                   {(s.rate * exchangeRate).toFixed(2)} ج.م
-                                </td>
-                                <td className="p-3 text-slate-400 font-mono whitespace-nowrap">
-                                  {s.min.toLocaleString()} - {s.max.toLocaleString()}
-                                </td>
-                                <td className="p-3">
-                                  <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                      s.status === 'active'
-                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                        : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
-                                    }`}
-                                  >
-                                    {s.status === 'active' ? 'نشط' : 'معطل'}
-                                  </span>
-                                </td>
-                                <td className="p-3">
-                                  <div className="flex items-center justify-center gap-1">
-                                    {/* Edit Service */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditService(s)}
-                                      className="p-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
-                                      title="تعديل بيانات وسعر الخدمة"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
+                                </strong>
+                                <span className="text-[10px] text-emerald-400 mr-1 tabular-nums">
+                                  (${s.rate.toFixed(3)})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditService(s)}
+                                  className="p-2 min-h-[38px] min-w-[38px] rounded-xl bg-[#222634] text-sky-400 flex items-center justify-center cursor-pointer"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleServiceStatus(s)}
+                                  className="p-2 min-h-[38px] min-w-[38px] rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center cursor-pointer"
+                                >
+                                  <Power className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteService(s.id, s.name)}
+                                  className="p-2 min-h-[38px] min-w-[38px] rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center cursor-pointer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
 
-                                    {/* Toggle Active / Deactive */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleServiceStatus(s)}
-                                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                        s.status === 'active'
-                                          ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400'
-                                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400'
-                                      }`}
-                                      title={s.status === 'active' ? 'تعطيل الخدمة' : 'تفعيل الخدمة'}
-                                    >
-                                      <Power className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    {/* Delete Service */}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteService(s.id, s.name)}
-                                      className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 transition-colors cursor-pointer"
-                                      title="حذف الخدمة نهائياً"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                      {/* Desktop Table (>= md) */}
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-right text-xs">
+                          <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                            <tr>
+                              <th className="p-3 font-bold">الرقم</th>
+                              <th className="p-3 font-bold">القسم الفرعي</th>
+                              <th className="p-3 font-bold">اسم الخدمة</th>
+                              <th className="p-3 font-bold">السعر ($)</th>
+                              <th className="p-3 font-bold">السعر (ج.م)</th>
+                              <th className="p-3 font-bold">الحدود</th>
+                              <th className="p-3 font-bold">الحالة</th>
+                              <th className="p-3 font-bold text-center">إجراءات</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#272c3d]/50">
+                            {currentServices.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="p-6 text-center text-slate-500">
+                                  لا توجد خدمات مطابقة للبحث أو القسم المختار
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              currentServices.map((s) => (
+                                <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
+                                  <td className="p-3 font-mono text-slate-400 tabular-nums">#{s.id}</td>
+                                  <td className="p-3 font-bold text-white max-w-[200px]">
+                                    <div className="truncate text-[#f6b100]" title={s.subcategoryDisplay || s.categoryName}>
+                                      {s.subcategoryDisplay || s.categoryName}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 font-normal">
+                                      {s.platformName}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-slate-200 max-w-xs">
+                                    <div className="font-semibold line-clamp-2">{s.name}</div>
+                                    {s.provider === 'SMMFansFaster' && (
+                                      <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 bg-amber-500/15 text-amber-300 rounded font-mono">
+                                        SMMFansFaster #{s.providerServiceId || s.id}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 font-black text-emerald-400 font-mono tabular-nums">
+                                    ${s.rate.toFixed(3)}
+                                  </td>
+                                  <td className="p-3 font-black text-[#f6b100] font-mono whitespace-nowrap tabular-nums">
+                                    {(s.rate * exchangeRate).toFixed(2)} ج.م
+                                  </td>
+                                  <td className="p-3 text-slate-400 font-mono whitespace-nowrap tabular-nums">
+                                    {s.min.toLocaleString()} - {s.max.toLocaleString()}
+                                  </td>
+                                  <td className="p-3">
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        s.status === 'active'
+                                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                          : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                                      }`}
+                                    >
+                                      {s.status === 'active' ? 'نشط' : 'معطل'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenEditService(s)}
+                                        className="p-1.5 rounded-lg bg-[#222634] hover:bg-[#2c3244] text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                                        title="تعديل بيانات وسعر الخدمة"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleServiceStatus(s)}
+                                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                          s.status === 'active'
+                                            ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400'
+                                            : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400'
+                                        }`}
+                                        title={s.status === 'active' ? 'تعطيل الخدمة' : 'تفعيل الخدمة'}
+                                      >
+                                        <Power className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteService(s.id, s.name)}
+                                        className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 transition-colors cursor-pointer"
+                                        title="حذف الخدمة نهائياً"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
 
                       {/* Pagination Controls */}
                       {totalPages > 1 && (
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#272c3d]/60 mt-3 text-xs">
                           <div className="text-slate-400">
-                            الصفحة <strong className="text-white">{safePage}</strong> من <strong className="text-white">{totalPages}</strong> (عرض {startIndex + 1} - {Math.min(startIndex + ADMIN_SERVICES_PER_PAGE, filteredServices.length)} من {filteredServices.length})
+                            الصفحة <strong className="text-white">{safePage}</strong> من{' '}
+                            <strong className="text-white">{totalPages}</strong>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               disabled={safePage <= 1}
                               onClick={() => setAdminServicesPage((p) => Math.max(1, p - 1))}
-                              className="px-2.5 py-1 rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
+                              className="px-3 py-1.5 min-h-[36px] rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
                             >
                               السابق
                             </button>
-                            <span className="px-2 py-1 text-slate-400 font-mono">{safePage} / {totalPages}</span>
+                            <span className="px-2 py-1 text-slate-400 font-mono">
+                              {safePage} / {totalPages}
+                            </span>
                             <button
                               type="button"
                               disabled={safePage >= totalPages}
                               onClick={() => setAdminServicesPage((p) => Math.min(totalPages, p + 1))}
-                              className="px-2.5 py-1 rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
+                              className="px-3 py-1.5 min-h-[36px] rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
                             >
                               التالي
                             </button>
@@ -1776,202 +2190,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 })()}
               </div>
 
-            {/* Add Service Card */}
-            <div className="lg:col-span-4 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-              <h3 className="text-base font-black text-white mb-2 flex items-center gap-2">
-                <PlusCircle className="w-4 h-4 text-[#f6b100]" />
-                <span>إضافة خدمة جديدة</span>
-              </h3>
-              <p className="text-xs text-slate-400 mb-4">إنشاء خدمة إضافية تظهر للعملاء فورًا</p>
+              {/* Add Service Card */}
+              <div className="lg:col-span-4 bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
+                <h3 className="text-base font-black text-white mb-2 flex items-center gap-2">
+                  <PlusCircle className="w-4 h-4 text-[#f6b100]" />
+                  <span>إضافة خدمة جديدة</span>
+                </h3>
+                <p className="text-xs text-slate-400 mb-4">إنشاء خدمة إضافية تظهر للعملاء فورًا</p>
 
-              <form onSubmit={handleCreateService} className="space-y-3.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">القسم / المنصة</label>
-                  <select
-                    value={newServiceCatId}
-                    onChange={(e) => setNewServiceCatId(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                  >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">اسم الخدمة</label>
-                  <input
-                    type="text"
-                    required
-                    value={newServiceName}
-                    onChange={(e) => setNewServiceName(e.target.value)}
-                    placeholder="مثال: متابعين إنستغرام VIP"
-                    className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    السعر لكل 1000 بالدولار ($ USD)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    min="0.01"
-                    value={newServiceRate}
-                    onChange={(e) => setNewServiceRate(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="مثال: 1.50"
-                    className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                  />
-                  {typeof newServiceRate === 'number' && newServiceRate > 0 && (
-                    <small className="text-[#f6b100] block mt-1 text-[11px]">
-                      يعادل: {(newServiceRate * exchangeRate).toFixed(2)} ج.م للعميل
-                    </small>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
+                <form onSubmit={handleCreateService} className="space-y-3.5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى</label>
-                    <input
-                      type="number"
-                      required
-                      value={newServiceMin}
-                      onChange={(e) => setNewServiceMin(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                    />
+                    <label className="block text-xs font-bold text-slate-300 mb-1">القسم / المنصة</label>
+                    <select
+                      value={newServiceCatId}
+                      onChange={(e) => setNewServiceCatId(Number(e.target.value))}
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى</label>
-                    <input
-                      type="number"
-                      required
-                      value={newServiceMax}
-                      onChange={(e) => setNewServiceMax(Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">الوصف</label>
-                  <textarea
-                    rows={2}
-                    value={newServiceDesc}
-                    onChange={(e) => setNewServiceDesc(e.target.value)}
-                    placeholder="تفاصيل الخدمة والضمان..."
-                    className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-md shadow-[#f6b100]/20"
-                >
-                  إضافة الخدمة
-                </button>
-              </form>
-            </div>
-          </div>
-
-          {/* Edit Service Modal */}
-          {editingService && (
-            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="w-full max-w-lg bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-base font-black text-white flex items-center gap-2">
-                    <Edit3 className="w-4 h-4 text-[#f6b100]" />
-                    <span>تعديل بيانات الخدمة #{editingService.id}</span>
-                  </h3>
-                  <button
-                    onClick={() => setEditingService(null)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222634] cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveEditService} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">اسم الخدمة</label>
                     <input
                       type="text"
                       required
-                      value={editServiceName}
-                      onChange={(e) => setEditServiceName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      value={newServiceName}
+                      onChange={(e) => setNewServiceName(e.target.value)}
+                      placeholder="مثال: متابعين إنستغرام VIP"
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">القسم / المنصة</label>
-                      <select
-                        value={editServiceCatId}
-                        onChange={(e) => setEditServiceCatId(Number(e.target.value))}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                      >
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">الحالة</label>
-                      <select
-                        value={editServiceStatus}
-                        onChange={(e) => setEditServiceStatus(e.target.value as any)}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                      >
-                        <option value="active">نشط (متاحة للطلب)</option>
-                        <option value="deactive">معطل (مخفية مؤقتاً)</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">
+                      السعر لكل 1000 بالدولار ($ USD)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      min="0.01"
+                      value={newServiceRate}
+                      onChange={(e) => setNewServiceRate(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="مثال: 1.50"
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                    />
+                    {typeof newServiceRate === 'number' && newServiceRate > 0 && (
+                      <small className="text-[#f6b100] block mt-1 text-[11px]">
+                        يعادل: {(newServiceRate * exchangeRate).toFixed(2)} ج.م للعميل
+                      </small>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">السعر ($)</label>
-                      <input
-                        type="number"
-                        step="0.001"
-                        required
-                        value={editServiceRate}
-                        onChange={(e) => setEditServiceRate(e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
-                      />
-                      {typeof editServiceRate === 'number' && editServiceRate > 0 && (
-                        <span className="text-[10px] text-[#f6b100] block mt-1">
-                          = {(editServiceRate * exchangeRate).toFixed(2)} ج.م
-                        </span>
-                      )}
-                    </div>
-
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى</label>
                       <input
                         type="number"
                         required
-                        value={editServiceMin}
-                        onChange={(e) => setEditServiceMin(Number(e.target.value))}
-                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        value={newServiceMin}
+                        onChange={(e) => setNewServiceMin(Number(e.target.value))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                       />
                     </div>
-
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى</label>
                       <input
                         type="number"
                         required
-                        value={editServiceMax}
-                        onChange={(e) => setEditServiceMax(Number(e.target.value))}
-                        className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        value={newServiceMax}
+                        onChange={(e) => setNewServiceMax(Number(e.target.value))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                       />
                     </div>
                   </div>
@@ -1979,34 +2273,156 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">الوصف</label>
                     <textarea
-                      rows={3}
-                      value={editServiceDesc}
-                      onChange={(e) => setEditServiceDesc(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      rows={2}
+                      value={newServiceDesc}
+                      onChange={(e) => setNewServiceDesc(e.target.value)}
+                      placeholder="تفاصيل الخدمة والضمان..."
+                      className="w-full px-3 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     />
                   </div>
 
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      type="submit"
-                      className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors cursor-pointer"
-                    >
-                      حفظ التعديلات
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingService(null)}
-                      className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-3 min-h-[44px] rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-md shadow-[#f6b100]/20 cursor-pointer"
+                  >
+                    إضافة الخدمة
+                  </button>
                 </form>
               </div>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Edit Service Modal */}
+            {editingService && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-lg bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <Edit3 className="w-4 h-4 text-[#f6b100]" />
+                      <span>تعديل بيانات الخدمة #{editingService.id}</span>
+                    </h3>
+                    <button
+                      onClick={() => setEditingService(null)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#222634] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveEditService} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">اسم الخدمة</label>
+                      <input
+                        type="text"
+                        required
+                        value={editServiceName}
+                        onChange={(e) => setEditServiceName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">القسم / المنصة</label>
+                        <select
+                          value={editServiceCatId}
+                          onChange={(e) => setEditServiceCatId(Number(e.target.value))}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        >
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحالة</label>
+                        <select
+                          value={editServiceStatus}
+                          onChange={(e) => setEditServiceStatus(e.target.value as any)}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        >
+                          <option value="active">نشط (متاحة للطلب)</option>
+                          <option value="deactive">معطل (مخفية مؤقتاً)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">السعر ($)</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          required
+                          value={editServiceRate}
+                          onChange={(e) =>
+                            setEditServiceRate(e.target.value === '' ? '' : Number(e.target.value))
+                          }
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                        {typeof editServiceRate === 'number' && editServiceRate > 0 && (
+                          <span className="text-[10px] text-[#f6b100] block mt-1">
+                            = {(editServiceRate * exchangeRate).toFixed(2)} ج.م
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى</label>
+                        <input
+                          type="number"
+                          required
+                          value={editServiceMin}
+                          onChange={(e) => setEditServiceMin(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى</label>
+                        <input
+                          type="number"
+                          required
+                          value={editServiceMax}
+                          onChange={(e) => setEditServiceMax(Number(e.target.value))}
+                          className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">الوصف</label>
+                      <textarea
+                        rows={3}
+                        value={editServiceDesc}
+                        onChange={(e) => setEditServiceDesc(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="submit"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors cursor-pointer"
+                      >
+                        حفظ التعديلات
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingService(null)}
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* TAB 5: SETTINGS & EXCHANGE RATE & PAYMENT METHODS */}
         {activeTab === 'settings' && (
@@ -2014,8 +2430,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               {/* Left Column: Exchange Rate & Backup */}
               <div className="lg:col-span-5 space-y-6">
-                {/* Rate Card */}
-                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
                   <h2 className="text-lg font-black text-white mb-2 flex items-center gap-2">
                     <Settings className="w-5 h-5 text-[#f6b100]" />
                     <span>إعدادات سعر الصرف (USD / EGP)</span>
@@ -2041,14 +2456,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                         <span className="text-sm font-bold text-white whitespace-nowrap">جنيه مصري</span>
                       </div>
-                      <small className="text-slate-500 block mt-2 text-[11px]">
-                        السعر الافتراضي المعتمد في المنصة هو 55.0 جنيه.
-                      </small>
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-3 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-lg shadow-[#f6b100]/20 cursor-pointer"
+                      className="w-full py-3 min-h-[44px] rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-lg shadow-[#f6b100]/20 cursor-pointer"
                     >
                       تحديث سعر الصرف وحفظ
                     </button>
@@ -2056,7 +2468,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 {/* Backup & Export */}
-                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
                   <h3 className="text-sm font-black text-white mb-2 flex items-center gap-2">
                     <Download className="w-4 h-4 text-[#f6b100]" />
                     <span>النسخ الاحتياطي وتصدير البيانات</span>
@@ -2067,7 +2479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <a
                     href="/api/admin/export"
                     download
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     <span>تحميل النسخة الاحتياطية (Export JSON)</span>
@@ -2076,12 +2488,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Right Column: Egyptian Payment Methods Management */}
-              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#272c3d]">
                   <div>
                     <h2 className="text-base font-black text-white flex items-center gap-2">
                       <CreditCard className="w-5 h-5 text-[#f6b100]" />
-                      <span>إدارة محافظ الدفع المصرية (Egyptian Cash & InstaPay)</span>
+                      <span>إدارة محافظ الدفع المصرية (Cash & InstaPay)</span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
                       التحكم بأرقام فودافون كاش، إنستاباي، أورانج، اتصالات، وي باي، وفوري وتفعيلها للعملاء
@@ -2090,55 +2502,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div className="space-y-3.5">
-                  {paymentMethodsList.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 text-xs">
-                      جاري تحميل بيانات وسائل الدفع...
-                    </div>
-                  ) : (
-                    paymentMethodsList.map((pm) => (
-                      <div
-                        key={pm.id}
-                        className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] hover:border-[#383f56] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-[#181b26] border border-[#272c3d] flex items-center justify-center p-2 shrink-0">
-                            <CreditCard className="w-5 h-5 text-[#f6b100]" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-xs">{pm.name}</span>
-                              <span
-                                className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
-                                  pm.status === 'active'
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
-                                }`}
-                              >
-                                {pm.status === 'active' ? 'نشط' : 'معطل'}
-                              </span>
-                            </div>
-                            <div className="text-xs font-mono text-[#f6b100] mt-1 font-bold">
-                              {pm.accountNumber || 'غير محدد'}
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
-                              {pm.instruction}
-                            </div>
-                          </div>
+                  {paymentMethodsList.map((pm) => (
+                    <div
+                      key={pm.id}
+                      className="p-4 rounded-2xl bg-[#0f1117] border border-[#272c3d] hover:border-[#383f56] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#181b26] border border-[#272c3d] flex items-center justify-center p-2 shrink-0">
+                          <CreditCard className="w-5 h-5 text-[#f6b100]" />
                         </div>
-
-                        <div className="flex items-center gap-2 self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={() => setEditingMethod({ ...pm })}
-                            className="px-3 py-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-sky-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            <span>تعديل</span>
-                          </button>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-xs">{pm.name}</span>
+                            <span
+                              className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
+                                pm.status === 'active'
+                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-slate-500/15 text-slate-400 border border-slate-500/30'
+                              }`}
+                            >
+                              {pm.status === 'active' ? 'نشط' : 'معطل'}
+                            </span>
+                          </div>
+                          <div className="text-xs font-mono text-[#f6b100] mt-1 font-bold">
+                            {pm.accountNumber || 'غير محدد'}
+                          </div>
+                          <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                            {pm.instruction}
+                          </div>
                         </div>
                       </div>
-                    ))
-                  )}
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingMethod({ ...pm })}
+                          className="px-3.5 py-2 min-h-[38px] rounded-xl bg-[#222634] hover:bg-[#2c3244] text-sky-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>تعديل</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -2178,7 +2584,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) =>
                           setEditingMethod({ ...editingMethod, accountNumber: e.target.value })
                         }
-                        placeholder="مثال: 01205323440 أو account@instapay"
                         className="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs font-mono font-bold focus:outline-none focus:border-[#f6b100]"
                       />
                     </div>
@@ -2199,7 +2604,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى (ج.م)</label>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأدنى</label>
                         <input
                           type="number"
                           value={editingMethod.min || 50}
@@ -2210,7 +2615,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى (ج.م)</label>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">الحد الأقصى</label>
                         <input
                           type="number"
                           value={editingMethod.max || 500000}
@@ -2251,14 +2656,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <button
                         type="submit"
                         disabled={methodSaving}
-                        className="flex-1 py-2.5 rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#f6b100] text-black font-extrabold text-xs hover:bg-[#e09f00] transition-colors disabled:opacity-50 cursor-pointer"
                       >
                         {methodSaving ? 'جاري الحفظ...' : 'حفظ بيانات المحفظة'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingMethod(null)}
-                        className="flex-1 py-2.5 rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
+                        className="flex-1 py-2.5 min-h-[42px] rounded-xl bg-[#222634] text-slate-300 font-bold text-xs hover:bg-[#2c3244] transition-colors cursor-pointer"
                       >
                         إلغاء
                       </button>
@@ -2273,25 +2678,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* TAB 7: SMMFANSFASTER PROVIDER INTEGRATION */}
         {activeTab === 'provider' && (
           <div className="space-y-6">
-            {/* Provider Header Banner */}
-            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
                   <Zap className="w-4 h-4" />
                   <span>الربط المباشر مع مزود SMMFansFaster</span>
                 </div>
-                <h2 className="text-xl font-black text-white">إدارة مزود الخدمات الخارجي (API v2)</h2>
+                <h2 className="text-lg sm:text-xl font-black text-white">
+                  إدارة مزود الخدمات الخارجي (API v2)
+                </h2>
                 <p className="text-xs text-slate-400 mt-1">
                   مزامنة تلقائية للخدمات وحالات الطلبات مع احتساب هامش الربح وفحص الرصيد اللحظي
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 w-full md:w-auto">
                 <button
                   type="button"
                   onClick={handleTestProvider}
                   disabled={providerTesting}
-                  className="px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                  className="flex-1 md:flex-initial justify-center min-h-[42px] px-4 py-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-[#f6b100] font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <Activity className={`w-4 h-4 ${providerTesting ? 'animate-spin' : ''}`} />
                   <span>{providerTesting ? 'جاري الفحص...' : 'فحص الاتصال الحي (Ping)'}</span>
@@ -2299,7 +2705,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   type="button"
                   onClick={fetchProviderInfo}
-                  className="p-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors"
+                  className="min-h-[42px] min-w-[42px] p-2.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors flex items-center justify-center cursor-pointer"
                   title="تحديث البيانات"
                 >
                   <RefreshCw className={`w-4 h-4 ${providerLoading ? 'animate-spin' : ''}`} />
@@ -2307,68 +2713,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Provider KPI Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
                 <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="text-xs">حالة الاتصال المباشر</span>
+                  <span className="text-xs">حالة الاتصال</span>
                   <Server className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="text-base font-black text-white">متصل ومباشر (Live)</span>
+                  <span className="text-sm sm:text-base font-black text-white">متصل (Live)</span>
                 </div>
-                <span className="text-[11px] text-slate-400 block mt-1">
-                  {providerInfo?.apiKeyMasked ? `مفتاح API: ${providerInfo.apiKeyMasked}` : 'جاهز للعمل'}
+                <span className="text-[10px] sm:text-[11px] text-slate-400 block mt-1 truncate">
+                  {providerInfo?.apiKeyMasked ? `مفتاح: ${providerInfo.apiKeyMasked}` : 'جاهز للعمل'}
                 </span>
               </div>
 
-              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
                 <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="text-xs">رصيدك لدى المزود (USD)</span>
+                  <span className="text-xs">رصيد المزود (USD)</span>
                   <DollarSign className="w-4 h-4 text-[#f6b100]" />
                 </div>
-                <div className="text-xl font-black text-[#f6b100]">
+                <div className="text-base sm:text-xl font-black text-[#f6b100] tabular-nums">
                   ${providerInfo?.balance?.balance || '0.0268'}
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  يعادل:{' '}
-                  {(
-                    parseFloat(providerInfo?.balance?.balance || '0.0268') * exchangeRate
-                  ).toFixed(2)}{' '}
-                  ج.م
+                <span className="text-[10px] sm:text-[11px] text-slate-400 tabular-nums">
+                  ={(parseFloat(providerInfo?.balance?.balance || '0.0268') * exchangeRate).toFixed(2)} ج.م
                 </span>
               </div>
 
-              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
                 <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="text-xs">هامش الربح المعتمد</span>
+                  <span className="text-xs">هامش الربح</span>
                   <TrendingUp className="w-4 h-4 text-blue-400" />
                 </div>
-                <div className="text-xl font-black text-white">
+                <div className="text-base sm:text-xl font-black text-white tabular-nums">
                   +{providerInfo?.marginPercent || marginInput}%
                 </div>
-                <span className="text-[11px] text-emerald-400">يضاف تلقائياً فوق سعر المزود</span>
+                <span className="text-[10px] sm:text-[11px] text-emerald-400">فوق سعر المزود</span>
               </div>
 
-              <div className="p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#181b26] border border-[#272c3d]">
                 <div className="flex items-center justify-between text-slate-400 mb-2">
-                  <span className="text-xs">الخدمات المرتبطة بالمزود</span>
+                  <span className="text-xs">الخدمات المرتبطة</span>
                   <Layers className="w-4 h-4 text-purple-400" />
                 </div>
-                <div className="text-xl font-black text-white">
-                  {providerInfo?.servicesCount || servicesList.filter((s) => s.provider === 'SMMFansFaster').length} خدمة
+                <div className="text-base sm:text-xl font-black text-white tabular-nums">
+                  {providerInfo?.servicesCount ||
+                    servicesList.filter((s) => s.provider === 'SMMFansFaster').length}{' '}
+                  خدمة
                 </div>
-                <span className="text-[11px] text-slate-400">
-                  من إجمالي {servicesList.length} خدمة في المنصة
+                <span className="text-[10px] sm:text-[11px] text-slate-400">
+                  من إجمالي {servicesList.length}
                 </span>
               </div>
             </div>
 
-            {/* Test result display */}
             {testResult && (
               <div
-                className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between ${
+                className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-2 ${
                   testResult.success
                     ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                     : 'bg-rose-500/15 border-rose-500/30 text-rose-400'
@@ -2384,8 +2786,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="font-bold">{testResult.message || testResult.error}</div>
                     {testResult.success && (
                       <div className="text-[11px] opacity-80 mt-0.5">
-                        سرعة الاتصال: {testResult.latencyMs}ms | الرصيد الحالي:{' '}
-                        {testResult.balance} {testResult.currency}
+                        سرعة الاتصال: {testResult.latencyMs}ms | الرصيد الحالي: {testResult.balance}{' '}
+                        {testResult.currency}
                       </div>
                     )}
                   </div>
@@ -2393,36 +2795,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => setTestResult(null)}
-                  className="text-xs hover:underline"
+                  className="text-xs hover:underline shrink-0"
                 >
                   إغلاق
                 </button>
               </div>
             )}
 
-            {/* Two Column Layout: Actions & Settings + Order Dispatcher */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Left Column: Settings and Sync Engine */}
               <div className="lg:col-span-5 space-y-6">
-                {/* Margin and Status Settings */}
-                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
                   <h3 className="text-base font-black text-white mb-2 flex items-center gap-2">
                     <Sliders className="w-4 h-4 text-[#f6b100]" />
                     <span>إعدادات هامش الربح وحالة المزود</span>
                   </h3>
-                  <p className="text-xs text-slate-400 mb-5">
-                    تحكم في النسبة المئوية للربح التي تضاف تلقائياً فوق أسعار المزود الأساسية
-                  </p>
-
-                  <form onSubmit={handleSaveProviderSettings} className="space-y-4">
+                  <form onSubmit={handleSaveProviderSettings} className="space-y-4 mt-4">
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-bold text-slate-300">
                           نسبة هامش الربح الإضافي (%)
                         </label>
-                        <span className="text-xs font-mono font-black text-[#f6b100]">
-                          +{marginInput}%
-                        </span>
+                        <span className="text-xs font-mono font-black text-[#f6b100]">+{marginInput}%</span>
                       </div>
                       <input
                         type="range"
@@ -2433,12 +2826,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) => setMarginInput(Number(e.target.value))}
                         className="w-full accent-[#f6b100] cursor-pointer"
                       />
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
-                        <span>0% (سعر التكلفة)</span>
-                        <span>25%</span>
-                        <span>50%</span>
-                        <span>100% (مضاعف)</span>
-                      </div>
                     </div>
 
                     <div>
@@ -2455,98 +2842,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </select>
                     </div>
 
-                    <div className="p-3.5 rounded-2xl bg-[#0f1117] border border-[#272c3d] text-[11px] text-slate-300 space-y-1">
-                      <div className="font-bold text-white">معادلة حساب السعر للعميل:</div>
-                      <div className="font-mono text-amber-300">
-                        السعر النهائي = سعر المزود × (1 + {marginInput} / 100)
-                      </div>
-                      <div className="text-slate-400">
-                        إذا كانت خدمة المزود بـ $1.00، ستظهر للعميل بـ ${(1 * (1 + marginInput / 100)).toFixed(2)} USD (
-                        {((1 * (1 + marginInput / 100)) * exchangeRate).toFixed(2)} ج.م)
-                      </div>
-                    </div>
-
                     <button
                       type="submit"
-                      className="w-full py-2.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-md shadow-[#f6b100]/20"
+                      className="w-full py-3 min-h-[44px] rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-colors shadow-md shadow-[#f6b100]/20 cursor-pointer"
                     >
                       حفظ إعدادات المزود
                     </button>
                   </form>
                 </div>
 
-                {/* Direct Action Hub */}
-                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl space-y-4">
+                <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl space-y-3">
                   <h3 className="text-base font-black text-white flex items-center gap-2">
                     <Zap className="w-4 h-4 text-[#f6b100]" />
                     <span>عمليات المزامنة السريعة</span>
                   </h3>
-                  <p className="text-xs text-slate-400">
-                    أزرار سريعة لتحديث الخدمات وجلب أحدث حالات الطلبات من المزود
-                  </p>
-
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={handleSyncProviderServices}
-                      disabled={providerSyncingServices}
-                      className="w-full py-3 px-4 rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Layers className={`w-4 h-4 text-[#f6b100] ${providerSyncingServices ? 'animate-spin' : ''}`} />
-                        <div className="text-right">
-                          <div className="font-bold">استيراد وتحديث الخدمات من المزود</div>
-                          <small className="text-[10px] text-slate-400 block">
-                            جلب قائمة خدمات SMMFansFaster وتطبيق هامش الربح
-                          </small>
-                        </div>
-                      </div>
-                      <span className="text-[11px] text-[#f6b100]">
-                        {providerSyncingServices ? 'جاري الاستيراد...' : 'بدء الاستيراد'}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSyncProviderOrders}
-                      disabled={providerSyncingOrders}
-                      className="w-full py-3 px-4 rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <RefreshCw className={`w-4 h-4 text-emerald-400 ${providerSyncingOrders ? 'animate-spin' : ''}`} />
-                        <div className="text-right">
-                          <div className="font-bold">مزامنة حالات الطلبات الحية</div>
-                          <small className="text-[10px] text-slate-400 block">
-                            تحديث حالات الطلبات (قيد التنفيذ / مكتمل / ملغي)
-                          </small>
-                        </div>
-                      </div>
-                      <span className="text-[11px] text-emerald-400">
-                        {providerSyncingOrders ? 'جاري المزامنة...' : 'مزامنة الآن'}
-                      </span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSyncProviderServices}
+                    disabled={providerSyncingServices}
+                    className="w-full py-3 px-4 min-h-[48px] rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <span>استيراد وتحديث الخدمات من المزود</span>
+                    <span className="text-[11px] text-[#f6b100]">
+                      {providerSyncingServices ? 'جاري الاستيراد...' : 'بدء الاستيراد'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncProviderOrders}
+                    disabled={providerSyncingOrders}
+                    className="w-full py-3 px-4 min-h-[48px] rounded-xl bg-[#222634] hover:bg-[#2c3244] border border-[#272c3d] text-white font-bold text-xs flex items-center justify-between transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <span>مزامنة حالات الطلبات الحية</span>
+                    <span className="text-[11px] text-emerald-400">
+                      {providerSyncingOrders ? 'جاري المزامنة...' : 'مزامنة الآن'}
+                    </span>
+                  </button>
                 </div>
               </div>
 
-              {/* Right Column: SMM Provider Orders Monitor */}
-              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl flex flex-col">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
-                  <div>
-                    <h3 className="text-base font-black text-white flex items-center gap-2">
-                      <ShoppingBag className="w-4 h-4 text-[#f6b100]" />
-                      <span>طلبات مزود SMMFansFaster</span>
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      مراقبة الطلبات التي تم توجيهها للمزود أو التي تحتاج إلى إعادة توجيه
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono px-3 py-1 rounded-full bg-[#0f1117] border border-[#272c3d] text-slate-300">
-                    {orders.filter((o) => o.provider || o.providerOrderId).length} طلب مرتبط
-                  </span>
-                </div>
-
-                <div className="overflow-x-auto flex-1">
+              <div className="lg:col-span-7 bg-[#181b26] rounded-3xl border border-[#272c3d] p-5 sm:p-6 shadow-xl">
+                <h3 className="text-base font-black text-white mb-4 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-[#f6b100]" />
+                  <span>طلبات مزود SMMFansFaster</span>
+                </h3>
+                <div className="overflow-x-auto">
                   <table className="w-full text-right text-xs">
                     <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
                       <tr>
@@ -2560,15 +2900,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </thead>
                     <tbody className="divide-y divide-[#272c3d]/50">
                       {orders
-                        .filter((o) => o.provider === 'SMMFansFaster' || o.providerOrderId || o.status === 'pending')
+                        .filter(
+                          (o) =>
+                            o.provider === 'SMMFansFaster' || o.providerOrderId || o.status === 'pending'
+                        )
                         .slice(0, 15)
                         .map((o) => (
                           <tr key={o.id} className="hover:bg-[#222634]/40 transition-colors">
-                            <td className="p-3 font-bold text-white">#{o.id}</td>
-                            <td className="p-3 max-w-[160px] truncate text-slate-200">
-                              <div className="font-semibold truncate">{o.serviceName}</div>
-                              <small className="text-[10px] text-slate-500 block truncate">{o.link}</small>
-                            </td>
+                            <td className="p-3 font-bold text-white tabular-nums">#{o.id}</td>
+                            <td className="p-3 max-w-[160px] truncate text-slate-200">{o.serviceName}</td>
                             <td className="p-3 font-mono">
                               {o.providerOrderId ? (
                                 <span className="text-amber-400 font-bold">#{o.providerOrderId}</span>
@@ -2576,42 +2916,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span className="text-slate-500 text-[10px]">قيد التوجيه</span>
                               )}
                             </td>
-                            <td className="p-3 font-bold text-white">{o.quantity.toLocaleString()}</td>
+                            <td className="p-3 font-bold text-white tabular-nums">
+                              {o.quantity.toLocaleString()}
+                            </td>
                             <td className="p-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  o.status === 'completed'
-                                    ? 'bg-emerald-500/15 text-emerald-400'
-                                    : o.status === 'processing'
-                                    ? 'bg-blue-500/15 text-blue-400'
-                                    : o.status === 'cancelled'
-                                    ? 'bg-rose-500/15 text-rose-400'
-                                    : 'bg-amber-500/15 text-amber-300'
-                                }`}
-                              >
-                                {o.status === 'completed'
-                                  ? 'مكتمل'
-                                  : o.status === 'processing'
-                                  ? 'قيد التنفيذ'
-                                  : o.status === 'cancelled'
-                                  ? 'ملغي'
-                                  : 'معلق'}
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#222634] text-slate-200">
+                                {o.status}
                               </span>
                             </td>
                             <td className="p-3">
-                              {o.status === 'pending' || !o.providerOrderId ? (
+                              {(o.status === 'pending' || !o.providerOrderId) && (
                                 <button
                                   type="button"
                                   onClick={() => handleResendOrder(o.id)}
                                   disabled={resendingOrderId === o.id}
-                                  className="px-2.5 py-1 rounded bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-[10px] transition-colors flex items-center gap-1 shadow-sm"
-                                  title="إرسال الطلب لـ SMMFansFaster فوراً"
+                                  className="px-2.5 py-1 rounded bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-[10px] transition-colors cursor-pointer"
                                 >
-                                  <Zap className="w-3 h-3" />
-                                  <span>{resendingOrderId === o.id ? 'إرسال...' : 'توجيه للمزود'}</span>
+                                  {resendingOrderId === o.id ? 'إرسال...' : 'توجيه للمزود'}
                                 </button>
-                              ) : (
-                                <span className="text-slate-500 text-[10px]">موجّه للمزود ✓</span>
                               )}
                             </td>
                           </tr>
@@ -2628,7 +2950,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Proof Receipt Lightbox Modal */}
       {previewProof && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-xl bg-[#181b26] border border-[#272c3d] rounded-3xl p-6 shadow-2xl relative">
+          <div className="w-full max-w-xl bg-[#181b26] border border-[#272c3d] rounded-3xl p-5 sm:p-6 shadow-2xl relative">
             <div className="flex items-center justify-between pb-3 border-b border-[#272c3d] mb-4">
               <h3 className="text-base font-black text-white flex items-center gap-2">
                 <Image className="w-4 h-4 text-[#f6b100]" />
@@ -2637,7 +2959,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setPreviewProof(null)}
-                className="p-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-400 hover:text-white transition-colors text-xs"
+                className="px-3 py-1.5 rounded-xl bg-[#222634] hover:bg-[#2c3244] text-slate-300 hover:text-white transition-colors text-xs cursor-pointer"
               >
                 إغلاق
               </button>
@@ -2652,6 +2974,100 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Mobile Sticky Bottom Navigation Bar for Admin */}
+      <nav
+        aria-label="شريط تنقل المشرف للهاتف"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#12141c]/95 backdrop-blur-lg border-t border-[#272c3d] px-1.5 py-1.5 flex items-center justify-around shadow-2xl"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('orders');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all cursor-pointer ${
+            activeTab === 'orders' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <ShoppingBag className="w-5 h-5" />
+          <span className="text-[10px] mt-1">الطلبات</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('deposits');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all relative cursor-pointer ${
+            activeTab === 'deposits' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <DollarSign className="w-5 h-5" />
+          <span className="text-[10px] mt-1">الإيداعات</span>
+          {transactions.some((t) => t.status === 'pending') && (
+            <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400"></span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('users');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all cursor-pointer ${
+            activeTab === 'users' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <Users className="w-5 h-5" />
+          <span className="text-[10px] mt-1">العملاء</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('services');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all cursor-pointer ${
+            activeTab === 'services' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <Layers className="w-5 h-5" />
+          <span className="text-[10px] mt-1">الخدمات</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('provider');
+            fetchProviderInfo();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all cursor-pointer ${
+            activeTab === 'provider' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <Zap className="w-5 h-5" />
+          <span className="text-[10px] mt-1">المزود</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('settings');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center min-w-[50px] min-h-[46px] rounded-xl px-1.5 py-1 transition-all cursor-pointer ${
+            activeTab === 'settings' ? 'text-[#f6b100] font-black' : 'text-slate-400 font-medium'
+          }`}
+        >
+          <Settings className="w-5 h-5" />
+          <span className="text-[10px] mt-1">الإعدادات</span>
+        </button>
+      </nav>
     </div>
   );
 };

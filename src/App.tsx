@@ -9,6 +9,8 @@ import { AuthModal } from './components/AuthModal';
 import { TermsModal } from './components/TermsModal';
 import { initAuth, logoutGoogle } from './lib/firebaseAuth';
 
+const SESSION_STORAGE_KEY = 'yd_active_session_v5';
+
 export const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [exchangeRate, setExchangeRate] = useState<number>(55);
@@ -17,14 +19,43 @@ export const App: React.FC = () => {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const userRef = React.useRef<User | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const persistUserSession = (u: User | null) => {
+    try {
+      if (u) {
+        const payload = JSON.stringify({ userId: u.id, username: u.username, role: u.role });
+        localStorage.setItem(SESSION_STORAGE_KEY, payload);
+        const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+        document.cookie = `yellow_duck_session_v5=${encodeURIComponent(payload)}; path=/; max-age=28800; ${
+          isHttps ? 'SameSite=None; Secure' : 'SameSite=Lax'
+        }`;
+      } else {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        document.cookie = 'yellow_duck_session_v5=; path=/; max-age=0';
+      }
+    } catch {}
+  };
 
   // Load current user
   const fetchCurrentUser = async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const savedSession = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEY) : null;
+      const res = await fetch('/api/auth/me', {
+        headers: savedSession ? { 'x-yd-session': savedSession } : undefined,
+      });
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user);
+        if (data.user) {
+          persistUserSession(data.user);
+          setUser(data.user);
+        } else {
+          setUser(null);
+        }
         if (data.exchangeRate) {
           setExchangeRate(data.exchangeRate);
         }
@@ -57,16 +88,17 @@ export const App: React.FC = () => {
     const unsubscribe = initAuth();
 
     const handlePopState = () => {
+      const activeUser = userRef.current;
       const path = window.location.pathname;
       if (path === '/admin' || path.startsWith('/admin')) {
-        if (user && user.role === 'admin') {
+        if (activeUser && activeUser.role === 'admin') {
           setCurrentView('admin');
         } else {
           setCurrentView('admin-login');
         }
       } else if (path === '/dashboard') {
-        if (user) {
-          setCurrentView(user.role === 'admin' ? 'admin' : 'dashboard');
+        if (activeUser) {
+          setCurrentView(activeUser.role === 'admin' ? 'admin' : 'dashboard');
         } else {
           setCurrentView('welcome');
         }
@@ -81,9 +113,10 @@ export const App: React.FC = () => {
       if (unsubscribe) unsubscribe();
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [user]);
+  }, []);
 
   const handleLogout = async () => {
+    persistUserSession(null);
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {}
@@ -99,6 +132,7 @@ export const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (loggedInUser: User) => {
+    persistUserSession(loggedInUser);
     setUser(loggedInUser);
     if (loggedInUser.role === 'admin') {
       window.history.pushState({}, '', '/admin');
@@ -110,6 +144,7 @@ export const App: React.FC = () => {
   };
 
   const handleAdminLoginSuccess = (adminUser: User) => {
+    persistUserSession(adminUser);
     setUser(adminUser);
     window.history.pushState({}, '', '/admin');
     setCurrentView('admin');
