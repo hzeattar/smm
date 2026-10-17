@@ -10,7 +10,7 @@
       "username": "admin",
       "firstname": "مدير",
       "lastname": "البطة الصفرا",
-      "email": "admin@yellowduck.com",
+      "email": "admin@yellowduck.app",
       "password": "admin",
       "role": "admin",
       "balance": 850,
@@ -43,6 +43,19 @@
       "status": "active",
       "isGoogleAuth": true,
       "createdAt": "2026-10-15T13:23:09.187Z"
+    },
+    {
+      "id": 4,
+      "username": "user",
+      "firstname": "عميل",
+      "lastname": "البطة الصفرا",
+      "email": "user@yellowduck.app",
+      "password": "user123",
+      "role": "user",
+      "balance": 53.32,
+      "avatar": "duck-happy.jpg",
+      "status": "active",
+      "createdAt": "2026-02-15 14:30:00"
     }
   ],
   "categories": [
