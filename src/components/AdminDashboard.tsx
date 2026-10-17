@@ -118,9 +118,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editServiceDesc, setEditServiceDesc] = useState('');
   const [editServiceStatus, setEditServiceStatus] = useState<'active' | 'deactive'>('active');
 
-  // Service filters
+  // Service filters & pagination
   const [serviceSearchQuery, setServiceSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | 'all'>('all');
+  const [adminServicesPage, setAdminServicesPage] = useState<number>(1);
+  const ADMIN_SERVICES_PER_PAGE = 50;
 
   // User filters
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -1595,7 +1597,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <input
                       type="text"
                       value={serviceSearchQuery}
-                      onChange={(e) => setServiceSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setServiceSearchQuery(e.target.value);
+                        setAdminServicesPage(1);
+                      }}
                       placeholder="بحث باسم الخدمة أو رقمها (ID)..."
                       className="w-full pl-3 pr-8 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     />
@@ -1605,7 +1610,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="w-full sm:w-48">
                     <select
                       value={selectedCategoryFilter}
-                      onChange={(e) => setSelectedCategoryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                      onChange={(e) => {
+                        setSelectedCategoryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                        setAdminServicesPage(1);
+                      }}
                       className="w-full px-3 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
                     >
                       <option value="all">جميع المنصات والأقسام</option>
@@ -1630,10 +1638,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     );
                   });
 
+                  const totalPages = Math.ceil(filteredServices.length / ADMIN_SERVICES_PER_PAGE) || 1;
+                  const safePage = Math.min(Math.max(1, adminServicesPage), totalPages);
+                  const startIndex = (safePage - 1) * ADMIN_SERVICES_PER_PAGE;
+                  const currentServices = filteredServices.slice(startIndex, startIndex + ADMIN_SERVICES_PER_PAGE);
+
                   return (
                     <div className="overflow-x-auto">
                       <div className="text-[11px] text-slate-400 mb-2 font-semibold">
-                        الخدمات المعروضة: {filteredServices.length} من إجمالي {servicesList.length} خدمة
+                        الخدمات المعروضة: {filteredServices.length} من إجمالي {servicesList.length} خدمة (الصفحة {safePage} من {totalPages})
                       </div>
                       <table className="w-full text-right text-xs">
                         <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
@@ -1649,14 +1662,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#272c3d]/50">
-                          {filteredServices.length === 0 ? (
+                          {currentServices.length === 0 ? (
                             <tr>
                               <td colSpan={8} className="p-6 text-center text-slate-500">
                                 لا توجد خدمات مطابقة للبحث أو القسم المختار
                               </td>
                             </tr>
                           ) : (
-                            filteredServices.map((s) => (
+                            currentServices.map((s) => (
                               <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
                                 <td className="p-3 font-mono text-slate-400">#{s.id}</td>
                                 <td className="p-3 font-bold text-white whitespace-nowrap">
@@ -1709,7 +1722,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400'
                                           : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400'
                                       }`}
-                                      title={s.status === 'active' ? 'تعطيل الخدمة مؤقتاً' : 'تفعيل الخدمة'}
+                                      title={s.status === 'active' ? 'تعطيل الخدمة' : 'تفعيل الخدمة'}
                                     >
                                       <Power className="w-3.5 h-3.5" />
                                     </button>
@@ -1730,6 +1743,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </tbody>
                       </table>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#272c3d]/60 mt-3 text-xs">
+                          <div className="text-slate-400">
+                            الصفحة <strong className="text-white">{safePage}</strong> من <strong className="text-white">{totalPages}</strong> (عرض {startIndex + 1} - {Math.min(startIndex + ADMIN_SERVICES_PER_PAGE, filteredServices.length)} من {filteredServices.length})
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={safePage <= 1}
+                              onClick={() => setAdminServicesPage((p) => Math.max(1, p - 1))}
+                              className="px-2.5 py-1 rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
+                            >
+                              السابق
+                            </button>
+                            <span className="px-2 py-1 text-slate-400 font-mono">{safePage} / {totalPages}</span>
+                            <button
+                              type="button"
+                              disabled={safePage >= totalPages}
+                              onClick={() => setAdminServicesPage((p) => Math.min(totalPages, p + 1))}
+                              className="px-2.5 py-1 rounded-lg bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:text-white disabled:opacity-40 cursor-pointer"
+                            >
+                              التالي
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

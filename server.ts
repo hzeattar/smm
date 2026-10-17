@@ -259,6 +259,12 @@ const categories: Category[] = [
   { id: 4, name: 'فيسبوك - Facebook', slug: 'facebook', icon: '/images/platforms/facebook.svg', status: 'active' },
   { id: 5, name: 'تيليجرام - Telegram', slug: 'telegram', icon: '/images/platforms/telegram.svg', status: 'active' },
   { id: 6, name: 'إكس - X (Twitter)', slug: 'x', icon: '/images/platforms/x.svg', status: 'active' },
+  { id: 7, name: 'سبوتيفاي - Spotify', slug: 'spotify', icon: '/images/platforms/spotify.svg', status: 'active' },
+  { id: 8, name: 'سناب شات - Snapchat', slug: 'snapchat', icon: '/images/platforms/snapchat.svg', status: 'active' },
+  { id: 9, name: 'ثريدز وكواي - Threads & Kwai', slug: 'threads-kwai', icon: '/images/platforms/tiktok.svg', status: 'active' },
+  { id: 10, name: 'ديسكورد ولينكد إن - Discord & LinkedIn', slug: 'discord-linkedin', icon: '/images/platforms/discord.svg', status: 'active' },
+  { id: 11, name: 'زيارات وترافيك مواقع - Website Traffic', slug: 'traffic', icon: '/images/platforms/youtube.svg', status: 'active' },
+  { id: 12, name: 'خدمات رقمية متنوعة - Other Digital', slug: 'other', icon: '/brand/yellow-duck.svg', status: 'active' },
 ];
 
 const services: Service[] = [
@@ -1216,19 +1222,15 @@ app.post('/api/admin/provider/sync-services', async (req, res) => {
         else if (lower.includes('facebook') || lower.includes('فيسبوك')) matched = categories[3];
         else if (lower.includes('telegram') || lower.includes('تيليجرام')) matched = categories[4];
         else if (lower.includes('twitter') || lower.includes(' x ') || lower.includes('تويتر') || lower.includes('إكس')) matched = categories[5];
+        else if (lower.includes('spotify') || lower.includes('سبوتيفاي') || lower.includes('soundcloud')) matched = categories[6];
+        else if (lower.includes('snapchat') || lower.includes('سناب')) matched = categories[7];
+        else if (lower.includes('threads') || lower.includes('ثريدز') || lower.includes('kwai') || lower.includes('كواي')) matched = categories[8];
+        else if (lower.includes('discord') || lower.includes('ديسكورد') || lower.includes('linkedin') || lower.includes('twitch')) matched = categories[9];
+        else if (lower.includes('traffic') || lower.includes('website') || lower.includes('visitor') || lower.includes('seo') || lower.includes('زوار')) matched = categories[10];
+        else matched = categories[11] || categories[0];
       }
 
-      if (matched) return matched.id;
-
-      const newCat: Category = {
-        id: categories.length + 1,
-        name: catName.slice(0, 40),
-        slug: catName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30),
-        icon: '/images/platforms/instagram.svg',
-        status: 'active',
-      };
-      categories.push(newCat);
-      return newCat.id;
+      return matched.id;
     };
 
     // Process ALL provider services

@@ -113,6 +113,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
 
+  // Services Catalog filter & pagination
+  const [servicesTabCategory, setServicesTabCategory] = useState<number | 'all'>('all');
+  const [servicesTabPage, setServicesTabPage] = useState<number>(1);
+  const SERVICES_PER_PAGE = 50;
+
   // Fetch initial data
   const fetchData = async () => {
     setLoading(true);
@@ -1703,77 +1708,220 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         )}
 
         {/* TAB 5: SERVICES CATALOG */}
-        {activeTab === 'services' && (
-          <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <h2 className="text-lg font-black text-white">قائمة الخدمات والأسعار</h2>
-                <p className="text-xs text-slate-400">استعرض كافة الخدمات المتاحة وأسعارها بالجنيه والدولار</p>
+        {activeTab === 'services' && (() => {
+          const filtered = services.filter((s) => {
+            const matchesCat = servicesTabCategory === 'all' || s.categoryId === servicesTabCategory;
+            if (!matchesCat) return false;
+            if (!serviceSearch.trim()) return true;
+            const q = serviceSearch.toLowerCase();
+            return (
+              s.name.toLowerCase().includes(q) ||
+              s.id.toString().includes(q) ||
+              s.description.toLowerCase().includes(q) ||
+              (s.categoryName && s.categoryName.toLowerCase().includes(q))
+            );
+          });
+
+          const totalPages = Math.ceil(filtered.length / SERVICES_PER_PAGE) || 1;
+          const safePage = Math.min(Math.max(1, servicesTabPage), totalPages);
+          const startIndex = (safePage - 1) * SERVICES_PER_PAGE;
+          const currentServices = filtered.slice(startIndex, startIndex + SERVICES_PER_PAGE);
+
+          return (
+            <div className="bg-[#181b26] rounded-3xl border border-[#272c3d] p-6 shadow-xl space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-[#f6b100]" />
+                    <span>قائمة كافة الخدمات والأسعار المعتمدة</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    استعرض أكثر من {services.length.toLocaleString()} خدمة موثوقة لمختلف منصات السوشيال ميديا بأسعار تبدأ من قروش
+                  </p>
+                </div>
+
+                <div className="relative w-full sm:w-72">
+                  <input
+                    type="text"
+                    placeholder="ابحث باسم الخدمة أو رقمها (ID)..."
+                    value={serviceSearch}
+                    onChange={(e) => {
+                      setServiceSearch(e.target.value);
+                      setServicesTabPage(1);
+                    }}
+                    className="w-full pl-3 pr-9 py-2.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100]"
+                  />
+                  <Search className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+                </div>
               </div>
 
-              <input
-                type="text"
-                placeholder="ابحث عن أي خدمة..."
-                value={serviceSearch}
-                onChange={(e) => setServiceSearch(e.target.value)}
-                className="px-3.5 py-2 rounded-xl bg-[#0f1117] border border-[#272c3d] text-white text-xs focus:outline-none focus:border-[#f6b100] w-full sm:w-64"
-              />
-            </div>
+              {/* Platform Categories Filter Bar */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServicesTabCategory('all');
+                    setServicesTabPage(1);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    servicesTabCategory === 'all'
+                      ? 'bg-[#f6b100] text-black shadow-md shadow-[#f6b100]/20'
+                      : 'bg-[#0f1117] text-slate-300 hover:bg-[#222634] border border-[#272c3d]'
+                  }`}
+                >
+                  جميع المنصات ({services.length})
+                </button>
+                {categories.map((c) => {
+                  const catCount = services.filter((s) => s.categoryId === c.id).length;
+                  const isSelected = servicesTabCategory === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setServicesTabCategory(c.id);
+                        setServicesTabPage(1);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#f6b100] text-black shadow-md shadow-[#f6b100]/20'
+                          : 'bg-[#0f1117] text-slate-300 hover:bg-[#222634] border border-[#272c3d]'
+                      }`}
+                    >
+                      <img src={c.icon} alt="" className="w-3.5 h-3.5 object-contain" />
+                      <span>{c.name.split('-')[0].trim()}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-black/20 text-black' : 'bg-[#222634] text-slate-400'}`}>
+                        {catCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
-                  <tr>
-                    <th className="p-3.5 font-bold">الرقم</th>
-                    <th className="p-3.5 font-bold">القسم</th>
-                    <th className="p-3.5 font-bold">اسم الخدمة</th>
-                    <th className="p-3.5 font-bold">السعر لكل 1000</th>
-                    <th className="p-3.5 font-bold">الحد الأدنى</th>
-                    <th className="p-3.5 font-bold">الحد الأقصى</th>
-                    <th className="p-3.5 font-bold">إجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#272c3d]/50">
-                  {services
-                    .filter((s) =>
-                      serviceSearch
-                        ? s.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
-                          s.description.toLowerCase().includes(serviceSearch.toLowerCase())
-                        : true
-                    )
-                    .map((s) => (
-                      <tr key={s.id} className="hover:bg-[#222634]/40 transition-colors">
-                        <td className="p-3.5 text-slate-400">#{s.id}</td>
-                        <td className="p-3.5 font-bold text-slate-200">{s.categoryName}</td>
-                        <td className="p-3.5 max-w-sm">
-                          <div className="font-semibold text-white">{s.name}</div>
-                          <div className="text-[11px] text-slate-400 truncate">{s.description}</div>
-                        </td>
-                        <td className="p-3.5 font-black text-[#f6b100]">
-                          {(s.rate * exchangeRate).toFixed(2)} ج.م
-                          <span className="block text-[10px] text-slate-500">${s.rate.toFixed(2)}</span>
-                        </td>
-                        <td className="p-3.5 text-slate-300">{s.min.toLocaleString()}</td>
-                        <td className="p-3.5 text-slate-300">{s.max.toLocaleString()}</td>
-                        <td className="p-3.5">
-                          <button
-                            onClick={() => {
-                              setSelectedCategory(s.categoryId);
-                              setSelectedServiceId(s.id);
-                              setActiveTab('new-order');
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-[#f6b100]/20 hover:bg-[#f6b100] text-[#f6b100] hover:text-black font-bold text-[11px] transition-colors"
-                          >
-                            اطلب الآن
-                          </button>
+              {/* Services Table Info */}
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>
+                  عرض {filtered.length === 0 ? 0 : startIndex + 1} - {Math.min(startIndex + SERVICES_PER_PAGE, filtered.length)} من إجمالي {filtered.length.toLocaleString()} خدمة متطابقة
+                </span>
+                <span>الصفحة {safePage} من {totalPages}</span>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto rounded-2xl border border-[#272c3d]">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-[#0f1117] text-slate-400 border-b border-[#272c3d]">
+                    <tr>
+                      <th className="p-3.5 font-bold">الرقم</th>
+                      <th className="p-3.5 font-bold">القسم / المنصة</th>
+                      <th className="p-3.5 font-bold">اسم الخدمة</th>
+                      <th className="p-3.5 font-bold">السعر لكل 1000</th>
+                      <th className="p-3.5 font-bold">الحد الأدنى</th>
+                      <th className="p-3.5 font-bold">الحد الأقصى</th>
+                      <th className="p-3.5 font-bold text-center">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#272c3d]/50 bg-[#141721]">
+                    {currentServices.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-400">
+                          لا توجد خدمات مطابقة لبحثك في هذا القسم حالياً.
                         </td>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
+                    ) : (
+                      currentServices.map((s) => (
+                        <tr key={s.id} className="hover:bg-[#222634]/50 transition-colors">
+                          <td className="p-3.5 font-mono text-slate-400">#{s.id}</td>
+                          <td className="p-3.5 font-bold text-slate-200 whitespace-nowrap">
+                            {s.categoryName || categories.find((c) => c.id === s.categoryId)?.name || 'عام'}
+                          </td>
+                          <td className="p-3.5 max-w-md">
+                            <div className="font-semibold text-white leading-snug">{s.name}</div>
+                            {s.description && (
+                              <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{s.description}</div>
+                            )}
+                          </td>
+                          <td className="p-3.5 font-black text-[#f6b100] whitespace-nowrap">
+                            {(s.rate * exchangeRate).toFixed(2)} ج.م
+                            <span className="block text-[10px] text-slate-500 font-normal">${s.rate.toFixed(3)} USD</span>
+                          </td>
+                          <td className="p-3.5 text-slate-300 font-mono">{s.min.toLocaleString()}</td>
+                          <td className="p-3.5 text-slate-300 font-mono">{s.max.toLocaleString()}</td>
+                          <td className="p-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCategory(s.categoryId);
+                                setSelectedServiceId(s.id);
+                                setActiveTab('new-order');
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-[#f6b100] hover:bg-[#e09f00] text-black font-extrabold text-xs transition-all shadow-md shadow-[#f6b100]/20 cursor-pointer"
+                            >
+                              اطلب الآن
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+                  <div className="text-xs text-slate-400">
+                    الصفحة <strong className="text-white">{safePage}</strong> من <strong className="text-white">{totalPages}</strong>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={safePage <= 1}
+                      onClick={() => setServicesTabPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-xs font-bold text-slate-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                    >
+                      السابق
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum = safePage - 2 + i;
+                        if (pageNum < 1) pageNum = 1 + i;
+                        if (pageNum > totalPages) pageNum = totalPages - 4 + i;
+                        if (pageNum < 1 || pageNum > totalPages) return null;
+                        return (
+                          <button
+                            key={pageNum}
+                            type="button"
+                            onClick={() => setServicesTabPage(pageNum)}
+                            className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              safePage === pageNum
+                                ? 'bg-[#f6b100] text-black font-black'
+                                : 'bg-[#0f1117] border border-[#272c3d] text-slate-300 hover:bg-[#222634]'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={safePage >= totalPages}
+                      onClick={() => setServicesTabPage((p) => Math.min(totalPages, p + 1))}
+                      className="px-3 py-1.5 rounded-xl bg-[#0f1117] border border-[#272c3d] text-xs font-bold text-slate-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer"
+                    >
+                      التالي
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Mobile Sticky Bottom Navigation Bar */}
