@@ -8,6 +8,7 @@ import { AdminLoginPage } from './components/AdminLoginPage';
 import { AuthModal } from './components/AuthModal';
 import { TermsModal } from './components/TermsModal';
 import { initAuth, logoutGoogle } from './lib/firebaseAuth';
+import { apiFetch as fetch } from './lib/apiFetch';
 
 const SESSION_STORAGE_KEY = 'yd_active_session_v5';
 

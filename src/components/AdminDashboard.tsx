@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Order, Transaction, Service, Category, PlatformStats, Ticket, ProviderInfo } from '../types';
+import { apiFetch as fetch } from '../lib/apiFetch';
 import {
   ShieldAlert,
   Users,
@@ -142,7 +143,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch('/api/orders?status=all'),
         fetch('/api/transactions'),
         fetch('/api/admin/users'),
-        fetch('/api/services'),
+        fetch('/api/services?includeInactive=true'),
         fetch('/api/categories'),
         fetch('/api/tickets'),
         fetch('/api/admin/payment-methods'),

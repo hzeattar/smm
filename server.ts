@@ -931,7 +931,33 @@ function loadDatabase() {
       }
       if (Array.isArray(data.transactions)) {
         transactions.length = 0;
-        transactions.push(...data.transactions);
+        const normalizedTxs: Transaction[] = data.transactions.map((t: any, idx: number) => {
+          const matchedUser = users.find((u) => u.id === Number(t.userId));
+          const amountUsd = typeof t.amountUsd === 'number' ? t.amountUsd : typeof t.amount === 'number' ? t.amount : 0;
+          const amountEgp =
+            typeof t.amountEgp === 'number' ? t.amountEgp : parseFloat((amountUsd * exchangeRate).toFixed(2));
+          const rawStatus = String(t.status || 'completed');
+          const status: 'pending' | 'completed' | 'rejected' =
+            rawStatus === 'pending' ? 'pending' : rawStatus === 'rejected' ? 'rejected' : 'completed';
+          return {
+            id: Number(t.id) || 500 + idx + 1,
+            userId: Number(t.userId) || 1,
+            userName:
+              t.userName ||
+              (matchedUser ? `${matchedUser.firstname} ${matchedUser.lastname}`.trim() || matchedUser.username : 'مستخدم المنصة'),
+            reference: t.reference || `YD-BONUS-${t.id || 500 + idx + 1}`,
+            methodId: typeof t.methodId === 'number' ? t.methodId : 0,
+            methodName: t.methodName || t.method || 'مكافأة ترحيبية',
+            amountEgp,
+            amountUsd,
+            senderPhone: t.senderPhone || t.proof || 'هدية التسجيل',
+            proofData: t.proofData || undefined,
+            status,
+            notes: t.notes || t.note || 'معاملة مسجلة بالنظام',
+            createdAt: String(t.createdAt || new Date().toISOString()).replace('T', ' ').slice(0, 19),
+          };
+        });
+        transactions.push(...normalizedTxs);
       }
       if (Array.isArray(data.tickets)) {
         tickets.length = 0;
@@ -1583,19 +1609,22 @@ app.post('/api/auth/google', (req, res) => {
     users.push(user);
 
     // Add bonus transaction
-    const bonusTx = {
-      id: transactions.length > 0 ? Math.max(...transactions.map((t) => t.id)) + 1 : 1,
+    const nextTxId = transactions.length > 0 ? Math.max(...transactions.map((t) => t.id)) + 1 : 501;
+    const bonusTx: Transaction = {
+      id: nextTxId,
       userId: user.id,
-      amount: 5.0,
+      userName: `${user.firstname} ${user.lastname}`.trim() || user.username,
+      reference: `YD-GOOGLE-${nextTxId}`,
+      methodId: 0,
+      methodName: 'مكافأة ترحيبية (Google)',
+      amountUsd: 5.0,
       amountEgp: parseFloat((5.0 * exchangeRate).toFixed(2)),
-      type: 'bonus',
-      method: 'Google Welcome Bonus',
-      status: 'approved',
-      proof: 'مكافأة تسجيل الدخول بحساب Google المتصل',
-      note: 'هدية ترحيبية فورية عند ربط حساب Google / Gmail بنجاح',
-      createdAt: new Date().toISOString(),
+      senderPhone: 'هدية التسجيل الفورية',
+      status: 'completed',
+      notes: 'هدية ترحيبية فورية عند التسجيل بحساب Google بنجاح',
+      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
-    transactions.unshift(bonusTx as any);
+    transactions.unshift(bonusTx);
 
     saveDatabase();
     systemLog('info', `New Google user registered: ${user.username} (${user.email}) with $5.00 balance`);
@@ -1965,8 +1994,8 @@ app.get('/api/categories', (req, res) => {
 });
 
 app.get('/api/services', (req, res) => {
-  const { categoryId, search } = req.query;
-  let list = services.filter((s) => s.status === 'active');
+  const { categoryId, search, includeInactive } = req.query;
+  let list = includeInactive === 'true' ? [...services] : services.filter((s) => s.status === 'active');
 
   if (categoryId) {
     list = list.filter((s) => s.categoryId === Number(categoryId));

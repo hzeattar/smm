@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, Category, Service, Order, Transaction, PaymentMethod, Ticket } from '../types';
+import { apiFetch as fetch } from '../lib/apiFetch';
 import {
   Wallet,
   ShoppingBag,
