@@ -135,10 +135,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             {/* Copy */}
             <div className="lg:col-span-7 space-y-6">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#f6b100]/15 border border-[#f6b100]/30 text-[#f6b100] text-xs font-bold">
-                <span>🐥</span>
-                <span>منصة عربية لخدمات السوشيال ميديا</span>
-              </div>
 
               <h1 className="text-3xl sm:text-5xl font-black text-white leading-tight">
                 كل خدمات السوشيال ميديا في مكان واحد مع{' '}
@@ -228,10 +224,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       <p className="text-xs text-slate-400">لوحة واحدة لكل احتياجاتك</p>
                     </div>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                    جاهزة للتشغيل
-                  </span>
                 </div>
 
                 <p className="text-xs text-slate-300 leading-relaxed mb-6">

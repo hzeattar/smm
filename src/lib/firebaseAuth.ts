@@ -10,8 +10,19 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { User } from '../types';
 
+// Resolve Firebase credentials from environment variables (for production / GitHub secret protection)
+// or fallback to the local firebase-applet-config.json
+const resolvedConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey || '',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfig.authDomain || '',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId || '',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfig.storageBucket || '',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId || '',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId || '',
+};
+
 // Initialize Firebase App instance safely (singleton)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(resolvedConfig);
 export const auth = getAuth(app);
 
 // Configure Google Provider with authorized scopes
